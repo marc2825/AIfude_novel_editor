@@ -1,0 +1,507 @@
+"use client";
+import { writingToolOperation } from "../ai-edit/writing-tools";
+import { TypographyPanel } from "./TypographyPanel";
+import { useOnline } from "../offline/use-online";
+import { PwaControls } from "../offline/PwaControls";
+import { SyncPanel } from "../sync/SyncPanel";
+import type { SyncTransport } from "../sync/transport";
+
+import type { Editor } from "@tiptap/core";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { countDocumentCharacters } from "../../domain/chapters";
+import { EditorUiStateStore } from "../../persistence/editor-ui-state";
+import { EditorSessions } from "../editor/editor-sessions";
+import { AiFeedbackPanel } from "../feedback/AiFeedbackPanel";
+import { DiagnosticsPanel } from "../feedback/DiagnosticsPanel";
+import { SearchPanel } from "../editor/SearchPanel";
+import { TrashPanel } from "./TrashPanel";
+import { ChapterPanel, type ChapterPanelHandle } from "./ChapterPanel";
+import { WritingProgress } from "./WritingProgress";
+import { WritingHistoryPanel } from "./WritingHistoryPanel";
+import { LibraryBackupPanel } from "./LibraryBackupPanel";
+import { AI_MODEL_PREFERENCE_AUTOMATIC } from "../../domain/ai-models";
+import type { AiModelPreference, WorkspaceSnapshot } from "../../domain/workspace";
+import {
+  AiEditBoundary,
+  type AiEditBoundaryHandle,
+} from "../ai-edit/AiEditBoundary";
+import { AiEditErrorBoundary } from "../ai-edit/AiEditErrorBoundary";
+import type { WritingToolId } from "../ai-edit/writing-tools";
+import {
+  resolveRuntimeModel,
+  type PublicAiRuntime,
+} from "../ai-edit/consent";
+import { NovelEditor } from "../editor/NovelEditor";
+import styles from "./Workspace.module.css";
+import { AiConnectionSettingsPanel, type AiConnectionSettingsHandle } from "../ai-edit/AiConnectionSettingsPanel";
+import { useChatGptConnection } from "../ai-edit/use-chatgpt-connection";
+import { WorkspaceSettings, type WorkspaceSettingsHandle } from "./WorkspaceSettings";
+import { AuthoringPanel, type AuthoringPanelHandle } from "./AuthoringPanel";
+import { StoryMemoryPanel, type StoryMemoryPanelHandle } from "./StoryMemoryPanel";
+import { WorkspaceLayout, type WorkspacePanelId } from "./WorkspaceLayout";
+import { WorkspaceFiles } from "./WorkspaceFiles";
+import { createWritingWorkspace, readWritingFile, WritingFileError } from "./workspace-files";
+import { workspaceBackupErrorMessage } from "./backup";
+import type { WorkspaceActionResult } from "./use-workspace";
+import {
+  type WorkspaceAccess,
+  useWorkspace,
+} from "./use-workspace";
+
+export type AiRuntimeInfo = PublicAiRuntime;
+
+const DISABLED_AI_RUNTIME: AiRuntimeInfo = {
+  available: false,
+  defaultModelId: null,
+  externalDataTransfer: false,
+  models: [],
+  providerId: null,
+};
+
+function runtimeSignature(runtime: AiRuntimeInfo): string {
+  return JSON.stringify([runtime.settingsRevision ?? "environment", runtime.available, runtime.providerId, runtime.defaultModelId,
+    runtime.externalDataTransfer, runtime.models.map((model) => [model.id, model.displayName]),
+    (runtime.comparisonProviders ?? []).map(runtimeSignature)]);
+}
+
+function aiRuntimeLabel(
+  runtime: AiRuntimeInfo,
+  modelPreference: AiModelPreference,
+): string {
+  if (!runtime.available) {
+    return "AI：無効";
+  }
+
+  const model = resolveRuntimeModel(runtime, modelPreference);
+
+  if (model === null) {
+    return `AI：選択モデル利用不可（${modelPreference}）`;
+  }
+
+  const destination = runtime.externalDataTransfer
+    ? "外部送信あり"
+    : "外部送信なし";
+  const kind = runtime.providerId === "mock" ? "デモ候補・" : "";
+  return `AI：${model.displayName}（${kind}${destination}）`;
+}
+
+function Header({
+  aiRuntime,
+  modelPreference = AI_MODEL_PREFERENCE_AUTOMATIC,
+  status,
+  workspaceTitle,
+}: Readonly<{
+  aiRuntime: AiRuntimeInfo;
+  modelPreference?: AiModelPreference;
+  status: string;
+  workspaceTitle?: string;
+}>) {
+  return (
+    <header className="workspace-header">
+      <div>
+        <span className={styles.brandMark} aria-hidden="true">文</span>
+        <h1 id="product-title">AIFUDE</h1>
+        {workspaceTitle === undefined ? null : (
+          <p className={styles.workspaceTitle}>{workspaceTitle}</p>
+        )}
+        <p aria-label="AI実行環境" className={styles.aiRuntime}>
+          {aiRuntimeLabel(aiRuntime, modelPreference)}
+        </p>
+      </div>
+      <p className="status" role="status" aria-live="polite">
+        {status}
+      </p>
+    </header>
+  );
+}
+
+function accessStatus(access: WorkspaceAccess): string | null {
+  switch (access) {
+    case "locked":
+      return "他のタブが編集中のため読み取り専用";
+    case "unsupported":
+      return "Web Locksを利用できないため読み取り専用";
+    case "conflict":
+      return "保存先が更新されたため読み取り専用";
+    case "editable":
+      return null;
+  }
+}
+
+export function WorkspaceApp({
+  aiRuntime: initialRuntime = DISABLED_AI_RUNTIME,
+  offlineShell = false,
+  syncTransport,
+}: Readonly<{ aiRuntime?: AiRuntimeInfo; offlineShell?: boolean; syncTransport?: SyncTransport }>) {
+  const online = useOnline();
+  const connectionAllowed = online && !offlineShell;
+  const [activePanel, setActivePanel] = useState<WorkspacePanelId | null>(null);
+  const [feedbackOpened, setFeedbackOpened] = useState(false);
+  const changePanel = useCallback((panel: WorkspacePanelId | null) => {
+    if (panel === "feedback") setFeedbackOpened(true);
+    setActivePanel(panel);
+  }, []);
+  const [writingTool, setWritingTool] = useState<WritingToolId>("rewrite");
+  const [configuredRuntime, setConfiguredRuntime] = useState(initialRuntime);
+  const baseRuntimeRef = useRef(initialRuntime);
+  const connectionPanelRef = useRef<AiConnectionSettingsHandle>(null);
+  const connectionDirtyRef = useRef(false);
+  const {
+    syncActions,
+    deleteChapter, listTrash, restoreTrash, purgeTrash,
+    changeChapters, updateWritingOptions, listHistory, createCheckpoint, restoreCheckpoint, clearHistory, exportLibrary, importLibrary, historyWarning,
+    activateWorkspace,
+    currentSnapshot,
+    deleteWorkspace,
+    handleDocumentChange,
+    handleEditorReady,
+    importWorkspace,
+    requestImmediateSave,
+    saveWorkspace,
+    state,
+    updateAiConsent,
+    updateAiModelPreference,
+    updateSettings,
+    updateStoryMemory,
+    updateAuthoringProfile,
+  } = useWorkspace();
+  const [uiWarning, setUiWarning] = useState(false);
+  const [editorSessions] = useState(() => new EditorSessions(new EditorUiStateStore(() => queueMicrotask(() => setUiWarning(true)))));
+  useEffect(() => { editorSessions.retain(); return () => editorSessions.disposeLater(); }, [editorSessions]);
+  const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
+  const [activeCount, setActiveCount] = useState(0);
+  const chapterPanelRef = useRef<ChapterPanelHandle>(null);
+  const chapterDirtyRef = useRef(false);
+  const aiEditBoundaryRef = useRef<AiEditBoundaryHandle>(null);
+  const editorRef = useRef<Editor | null>(null);
+  const settingsPanelRef = useRef<WorkspaceSettingsHandle>(null);
+  const settingsDirtyRef = useRef(false);
+  const memoryPanelRef = useRef<StoryMemoryPanelHandle>(null);
+  const memoryDirtyRef = useRef(false);
+  const authoringPanelRef = useRef<AuthoringPanelHandle>(null);
+  const authoringDirtyRef = useRef(false);
+  const [hasDrafts, setHasDrafts] = useState(false);
+  const refreshDraftNotice = useCallback(() => setHasDrafts(
+    authoringDirtyRef.current || memoryDirtyRef.current || chapterDirtyRef.current || settingsDirtyRef.current || connectionDirtyRef.current,
+  ), []);
+  const [paidApiEnabled, setPaidApiEnabled] = useState(false);
+  const invalidateConnection = useCallback(() => { aiEditBoundaryRef.current?.invalidateContext(); }, []);
+  const onConnectionRuntimeChange = useCallback((runtime: AiRuntimeInfo) => {
+    if (runtimeSignature(baseRuntimeRef.current) !== runtimeSignature(runtime)) {
+      invalidateConnection(); baseRuntimeRef.current = runtime; setConfiguredRuntime(runtime); setPaidApiEnabled(false);
+    }
+  }, [invalidateConnection]);
+  const onConnectionDirtyChange = useCallback((dirty: boolean) => { connectionDirtyRef.current = dirty; refreshDraftNotice(); }, [refreshDraftNotice]);
+  const onPaidApiChange = useCallback((enabled: boolean) => { invalidateConnection(); setPaidApiEnabled(enabled); }, [invalidateConnection]);
+  const connection = useChatGptConnection(connectionAllowed && (configuredRuntime.providerId === "chatgpt" || configuredRuntime.comparisonProviders?.some((provider) => provider.providerId === "chatgpt") === true), invalidateConnection);
+  const connectionId = connection.status?.connected && !connection.connecting && !connection.busy ? connection.status.connectionId ?? undefined : undefined;
+  const aiRuntime: AiRuntimeInfo = {
+    ...configuredRuntime,
+    available: connectionAllowed && configuredRuntime.available,
+    paidApiEnabled,
+    ...(configuredRuntime.providerId === "chatgpt" ? { connectionId } : {}),
+    comparisonProviders: configuredRuntime.comparisonProviders?.map((provider) => ({ ...provider, available: connectionAllowed && provider.available, paidApiEnabled, ...(provider.providerId === "chatgpt" ? { connectionId } : {}) })),
+  };
+  useEffect(() => { if (!connectionAllowed) invalidateConnection(); }, [connectionAllowed, invalidateConnection]);
+
+  const onAiCommand = useCallback((editor: Editor) => {
+    return aiEditBoundaryRef.current?.invoke(editor) ?? false;
+  }, []);
+
+  const onEditorReady = useCallback(
+    (editor: Editor) => {
+      editorRef.current = editor;
+      setActiveEditor(editor);
+      setActiveCount(Array.from(editor.state.doc.textContent).length);
+      handleEditorReady(editor);
+      aiEditBoundaryRef.current?.revalidate(editor);
+    },
+    [handleEditorReady],
+  );
+
+  const onEditorDestroy = useCallback((editor: Editor) => {
+    if (editorRef.current === editor) {
+      editorRef.current = null;
+      setActiveEditor(null);
+    }
+
+    aiEditBoundaryRef.current?.revalidate(editor);
+  }, []);
+
+  const onEditorTransaction = useCallback((editor: Editor) => {
+    if (editorRef.current === editor) aiEditBoundaryRef.current?.revalidate(editor);
+  }, []);
+
+  const onDocumentChange = useCallback((editor: Editor) => {
+    if (editorRef.current === editor) setActiveCount(Array.from(editor.state.doc.textContent).length);
+    handleDocumentChange(editor);
+  }, [handleDocumentChange]);
+  const onChapterDirtyChange = useCallback((dirty: boolean) => { chapterDirtyRef.current = dirty; refreshDraftNotice(); }, [refreshDraftNotice]);
+
+  const requestEditorFocus = useCallback((editor: Editor) => {
+    if (editorRef.current === editor && !editor.isDestroyed) {
+      editor.view.focus();
+    }
+  }, []);
+
+  const onSettingsDirtyChange = useCallback((dirty: boolean) => { settingsDirtyRef.current = dirty; refreshDraftNotice(); }, [refreshDraftNotice]);
+  const onAuthoringDirtyChange = useCallback((dirty: boolean) => { authoringDirtyRef.current = dirty; refreshDraftNotice(); }, [refreshDraftNotice]);
+  const onMemoryDirtyChange = useCallback((dirty: boolean) => { memoryDirtyRef.current = dirty; refreshDraftNotice(); }, [refreshDraftNotice]);
+  const confirmDiscardMemory = useCallback(() => (!authoringDirtyRef.current && !memoryDirtyRef.current && !chapterDirtyRef.current && !settingsDirtyRef.current) || window.confirm(
+    "保存していない作品メモリ・人物・文体・章の設定・作品設定があります。入力中の変更を破棄して続行しますか？ 残す場合はキャンセルして保存してください。",
+  ), []);
+  useEffect(() => {
+    function beforeUnload(event: BeforeUnloadEvent) {
+      if (authoringDirtyRef.current || memoryDirtyRef.current || chapterDirtyRef.current || settingsDirtyRef.current || connectionDirtyRef.current || (state.phase === "ready" && state.saveStatus !== "saved")) {
+        event.preventDefault(); event.returnValue = "";
+      }
+    }
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [state]);
+
+  const saveCurrent = useCallback(async (): Promise<WorkspaceActionResult> => {
+    if (editorRef.current?.view.composing) return { ok: false, message: "日本語の変換を確定してから保存してください。" };
+    if (settingsDirtyRef.current) {
+      const saved = await settingsPanelRef.current?.save();
+      if (saved?.ok !== true) return saved ?? { ok: false, message: "作品設定を保存できませんでした。" };
+    }
+    if (authoringDirtyRef.current) {
+      const saved = await authoringPanelRef.current?.save();
+      if (saved?.ok !== true) return saved ?? { ok: false, message: "執筆設定を保存できませんでした。" };
+    }
+    if (memoryDirtyRef.current) {
+      const saved = await memoryPanelRef.current?.save();
+      if (saved?.ok !== true) return saved ?? { ok: false, message: "メモリを保存できませんでした。" };
+    }
+    if (chapterDirtyRef.current) {
+      const saved = await chapterPanelRef.current?.save();
+      if (saved?.ok !== true) return saved ?? { ok: false, message: "章の設定を保存できませんでした。" };
+    }
+    const manuscript = await saveWorkspace();
+    if (!manuscript.ok) return manuscript;
+    if (connectionDirtyRef.current) {
+      const saved = await connectionPanelRef.current?.save();
+      if (saved?.ok !== true) return { ok: false, message: "本文・作品設定・メモは保存しましたが、AI接続設定を保存できませんでした。接続設定の入力は保持しています。" };
+    }
+    return manuscript;
+  }, [saveWorkspace]);
+  const switchWorkspace = useCallback(async (target: string | WorkspaceSnapshot): Promise<WorkspaceActionResult> => {
+    if (typeof target === "string" && currentSnapshot()?.project.id === target) return { ok: true };
+    if (!confirmDiscardMemory()) return { ok: false, message: "作品の切替を取り消しました。" };
+    invalidateConnection();
+    const result = await activateWorkspace(target);
+    if (result.ok) { authoringDirtyRef.current = false; memoryDirtyRef.current = false; chapterDirtyRef.current = false; settingsDirtyRef.current = false; refreshDraftNotice(); }
+    return result;
+  }, [activateWorkspace, confirmDiscardMemory, currentSnapshot, invalidateConnection, refreshDraftNotice]);
+  const openWritingFile = useCallback(async (file: File): Promise<WorkspaceActionResult> => {
+    try { return await switchWorkspace(await readWritingFile(file)); }
+    catch (error: unknown) { return { ok: false, message: error instanceof WritingFileError ? error.message : workspaceBackupErrorMessage(error) }; }
+  }, [switchWorkspace]);
+  const guardedImport = useCallback(async (snapshot: WorkspaceSnapshot): Promise<WorkspaceActionResult> => {
+    if (!confirmDiscardMemory()) return { ok: false, message: "バックアップの取り込みを取り消しました。" };
+    invalidateConnection();
+    const result = await importWorkspace(snapshot);
+    if (result.ok) { authoringDirtyRef.current = false; memoryDirtyRef.current = false; chapterDirtyRef.current = false; settingsDirtyRef.current = false; refreshDraftNotice(); }
+    return result;
+  }, [confirmDiscardMemory, importWorkspace, invalidateConnection, refreshDraftNotice]);
+  const guardedDelete = useCallback(async (): Promise<WorkspaceActionResult> => {
+    if (!confirmDiscardMemory()) return { ok: false, message: "削除を取り消しました。" };
+    invalidateConnection();
+    const result = await deleteWorkspace();
+    if (result.ok) { setActivePanel("backup"); authoringDirtyRef.current = false; memoryDirtyRef.current = false; chapterDirtyRef.current = false; settingsDirtyRef.current = false; refreshDraftNotice(); }
+    return result;
+  }, [confirmDiscardMemory, deleteWorkspace, invalidateConnection, refreshDraftNotice]);
+  const filesUi = <WorkspaceFiles
+    uiState={editorSessions.uiState}
+    activeProjectId={state.phase === "ready" ? state.workspace.project.id : null}
+    disabled={state.phase === "ready" ? state.access !== "editable" || state.operation !== "idle" : state.phase !== "deleted"}
+    files={state.phase === "ready" || state.phase === "deleted" ? state.files : []}
+    getCurrentSnapshot={currentSnapshot} onNew={() => switchWorkspace(createWritingWorkspace())}
+    onOpen={openWritingFile} onSave={saveCurrent} onSwitch={switchWorkspace}
+  />;
+
+  const trashUi = <TrashPanel disabled={state.phase === "ready" ? state.access !== "editable" || state.operation !== "idle" : state.phase !== "deleted"}
+    refreshKey={state.phase === "ready" ? `${state.workspace.project.id}:${state.workspace.document.chapterIds.join(",")}` : state.phase}
+    projectId={state.phase === "ready" ? state.workspace.project.id : null} onList={listTrash} onPurge={purgeTrash}
+    onRestore={async (entry) => {
+      if (entry.kind === "chapter") invalidateConnection();
+      return restoreTrash(entry);
+    }} />;
+
+  const connectionUi = <AiEditErrorBoundary key="ai-connections"><AiConnectionSettingsPanel active={connectionAllowed && activePanel === "connections"} embedded={state.phase === "ready" || state.phase === "deleted"} ref={connectionPanelRef}
+    disabled={!connectionAllowed || (state.phase === "ready" ? state.access !== "editable" || state.operation !== "idle" : state.phase !== "deleted")}
+    paidApiEnabled={paidApiEnabled} onPaidApiEnabledChange={onPaidApiChange} onInvalidate={invalidateConnection}
+    onRuntimeChange={onConnectionRuntimeChange} onDirtyChange={onConnectionDirtyChange} /></AiEditErrorBoundary>;
+
+  if (state.phase === "hydrating") {
+    return (
+      <main className="home" aria-busy="true">
+        <Header aiRuntime={aiRuntime} status="読み込み中" />
+        <p className={styles.feedback}>原稿を読み込んでいます。</p>
+      </main>
+    );
+  }
+
+  if (state.phase === "load-error") {
+    return (
+      <main className="home">
+        <Header aiRuntime={aiRuntime} status="読み込み失敗" />
+        <p className={styles.error} role="alert">
+          保存データを読み込めませんでした。既存データは変更されていません。
+        </p>
+      </main>
+    );
+  }
+
+  if (state.phase === "unavailable") {
+    return (
+      <main className="home">
+        <Header
+          aiRuntime={aiRuntime}
+          status={accessStatus(state.access) ?? "読み取り専用"}
+        />
+        <p className={styles.feedback}>
+          編集中のworkspaceが利用可能になってから、ページを再読み込みしてください。
+        </p>
+      </main>
+    );
+  }
+
+  if (state.phase === "deleted") {
+    return (
+      <WorkspaceLayout active={activePanel} onActiveChange={changePanel}
+        writingTool={writingTool}
+        header={<Header aiRuntime={aiRuntime} status="削除済み" />} files={filesUi} alerts={null}
+        panels={{
+        typography: null, feedback: null, settings: null, memory: null, chapters: null, history: null, connections: connectionUi,
+          backup: <>{trashUi}<LibraryBackupPanel disabled={false} onExport={exportLibrary} onImport={importLibrary} /></> }}
+        editor={<div id="workspace-editor" role="tabpanel" aria-label="作品を選択">
+          <p className={styles.feedback} role="status">
+            ローカルデータを削除しました。ごみ箱から復元できます。新しい空の作品を始めるには「新規作品」を選んでください。
+          </p>
+          <button onClick={() => void switchWorkspace(createWritingWorkspace())} type="button">新しい作品を始める</button>
+        </div>}
+      >{null}</WorkspaceLayout>
+    );
+  }
+
+  const accessMessage = accessStatus(state.access);
+  const saveStatus =
+    state.operation === "processing" ? "履歴・バックアップ処理中" : state.operation === "switching" ? "作品切替中" : state.operation === "importing"
+      ? "バックアップ取込中"
+      : state.operation === "deleting"
+        ? "削除中"
+        : accessMessage ??
+          {
+            dirty: "未保存",
+            error: "保存失敗",
+            saved: "保存済み",
+            saving: "保存中",
+          }[state.saveStatus];
+  const initialText = state.workspace.chapter.body;
+  const editable =
+    state.access === "editable" && state.operation === "idle";
+  const captureContext = {
+    chapterId: state.workspace.chapter.id,
+    commonPrompt: state.workspace.project.commonPrompt,
+    storyMemory: state.workspace.project.storyMemory,
+    authoringProfile: state.workspace.project.authoringProfile,
+    contextRevision: state.workspace.project.contextRevision,
+    documentId: state.workspace.document.id,
+    editable,
+    manualStyle: state.workspace.styleProfile.manualInstructions,
+    projectId: state.workspace.project.id,
+  };
+
+  return (
+    <WorkspaceLayout active={activePanel} onActiveChange={changePanel}
+      writingTool={writingTool} onWritingToolChange={setWritingTool}
+      header={<Header aiRuntime={aiRuntime} modelPreference={state.workspace.project.aiModelPreference}
+        status={saveStatus} workspaceTitle={state.workspace.project.title} />}
+      files={filesUi}
+      alerts={<>
+        {!connectionAllowed ? <p className={styles.feedback} role="status">{online ? "オフライン用画面です。AIを使うには設定から保存してオンライン画面へ戻ってください。" : "オフラインです。本文の編集と端末への保存は続けられます。AIは停止し、接続が戻っても自動送信しません。"}</p> : null}
+        {hasDrafts ? <p className={styles.draftNotice} role="status">メモ・設定に未保存の入力があります。「保存」で保存できます。</p> : null}
+        {state.saveStatus === "error" && state.access === "editable" ? (
+          <p className={styles.error} role="alert">保存できませんでした。本文はこの画面に保持されています。</p>
+        ) : null}
+        {historyWarning ? <p role="alert" className={styles.error}>{historyWarning}</p> : null}
+        {uiWarning ? <p role="status">タブ・カーソル位置の保存を利用できません。本文の保存は別に行います。</p> : null}
+      </>}
+      panels={{
+        typography: <TypographyPanel key={`typography:${state.workspace.chapter.id}:${state.editorSession}`} editor={activeEditor} context={captureContext} active={activePanel === "typography"} getCurrentSnapshot={currentSnapshot} />,
+        feedback: <>{feedbackOpened ? <DiagnosticsPanel key={`diagnostics:${state.workspace.chapter.id}:${state.editorSession}`} editor={activeEditor} context={captureContext}
+          onAi={(editor, instruction) => {
+            setWritingTool("custom"); setActivePanel(null);
+            requestAnimationFrame(() => aiEditBoundaryRef.current?.invoke(editor, instruction));
+          }}><AiFeedbackPanel editor={activeEditor} contextRevision={state.workspace.project.contextRevision} runtime={aiRuntime}
+            consent={state.workspace.project.aiConsent} modelPreference={state.workspace.project.aiModelPreference} onConsentChange={updateAiConsent} /></DiagnosticsPanel> : null}</>,
+        settings: <><WorkspaceSettings embedded ref={settingsPanelRef} onDirtyChange={onSettingsDirtyChange}
+          onPaidApiEnabledChange={onPaidApiChange} chatGptConnection={connection} aiRuntime={aiRuntime}
+          busy={state.operation !== "idle"} editable={state.access === "editable"} getCurrentSnapshot={currentSnapshot}
+          key={`${state.workspace.project.id}:${state.editorSession}`} onDelete={guardedDelete}
+          onConsentChange={updateAiConsent} onImport={guardedImport} onModelPreferenceChange={updateAiModelPreference}
+          onSave={updateSettings} workspace={state.workspace} /><PwaControls online={online} offlineShell={offlineShell} onSave={saveCurrent} /></>,
+        connections: connectionUi,
+        memory: <><StoryMemoryPanel embedded ref={memoryPanelRef} onDirtyChange={onMemoryDirtyChange}
+          key={`memory:${state.workspace.project.id}:${state.editorSession}`} memory={state.workspace.project.storyMemory}
+          disabled={!editable} onSave={updateStoryMemory} />
+          <AuthoringPanel key={`authoring:${state.workspace.project.id}:${state.editorSession}`} ref={authoringPanelRef}
+            profile={state.workspace.project.authoringProfile} workspace={state.workspace} editor={activeEditor}
+            disabled={!editable} onSave={updateAuthoringProfile} onDirtyChange={onAuthoringDirtyChange} /></>,
+        chapters: <ChapterPanel embedded ref={chapterPanelRef} key={`chapter:${state.workspace.chapter.id}:${state.editorSession}`}
+          workspace={state.workspace} disabled={!editable} onDirtyChange={onChapterDirtyChange}
+          onChange={(change) => { invalidateConnection(); return changeChapters(change); }}
+          onDelete={() => { invalidateConnection(); return deleteChapter(); }} />,
+        history: <WritingHistoryPanel embedded active={activePanel === "history"} key={`history:${state.workspace.project.id}`}
+          workspace={state.workspace} disabled={!editable} warning={null}
+          getCurrentSnapshot={currentSnapshot} onList={listHistory} onClear={clearHistory}
+          onAutoChange={(enabled) => updateWritingOptions(state.workspace.project.writingGoal, enabled)}
+          onCreate={async (label) => { const saved = await saveCurrent(); return saved.ok ? createCheckpoint(label) : saved; }}
+          onRestore={async (entry) => {
+            const saved = await saveCurrent(); if (!saved.ok) return saved;
+            invalidateConnection(); return restoreCheckpoint(entry);
+          }} />,
+        backup: <>{trashUi}<LibraryBackupPanel disabled={!editable} onExport={async () => {
+          const saved = await saveCurrent(); if (!saved.ok) throw new Error("保存できません。"); return exportLibrary();
+        }} onImport={async (bundle) => { const saved = await saveCurrent(); return saved.ok ? importLibrary(bundle) : saved; }} />
+          <SyncPanel key={`sync:${state.workspace.project.id}`} actions={syncActions} disabled={!editable} onSave={saveCurrent} onImport={importLibrary} transport={offlineShell ? undefined : syncTransport} /></>,
+      }}
+      editor={<div className={styles.editorPanel} id="workspace-editor" role="tabpanel" aria-label={state.workspace.project.title}>
+        <div className={styles.manuscriptToolbar}>
+          <span>{state.workspace.chapter.title}</span>
+          <SearchPanel key={`search:${state.workspace.chapter.id}:${state.editorSession}`} editor={activeEditor} disabled={!editable} />
+        </div>
+        <NovelEditor
+          dictionaryMode={writingTool === "dictionary"}
+          completionMode={writingToolOperation(writingTool)}
+          sessions={editorSessions}
+          sessionKey={`${state.workspace.project.id}:${state.workspace.chapter.id}:${state.editorSession}`}
+          positionKey={`${state.workspace.project.id}:${state.workspace.chapter.id}`}
+          editable={editable} initialContentRevision={state.workspace.chapter.contentRevision} initialText={initialText}
+          key={`${state.workspace.chapter.id}:${state.editorSession}`}
+          onAiCommand={onAiCommand} onDocumentChange={onDocumentChange} onEditorDestroy={onEditorDestroy}
+          onEditorReady={onEditorReady} onEditorTransaction={onEditorTransaction}
+        />
+        <footer className={styles.manuscriptFooter}>
+          <WritingProgress workspace={state.workspace}
+            activeCount={activeEditor ? activeCount : countDocumentCharacters(state.workspace.chapter.body)}
+            disabled={!editable} onSave={updateWritingOptions} />
+        </footer>
+      </div>}
+    >
+      <AiEditErrorBoundary>
+        <AiEditBoundary
+          writingTool={writingTool}
+          key={`${state.workspace.project.id}:${state.workspace.chapter.id}:${state.editorSession}`}
+          captureContext={captureContext} consent={state.workspace.project.aiConsent}
+          modelPreference={state.workspace.project.aiModelPreference} onAccepted={requestImmediateSave}
+          onConsentChange={updateAiConsent} onRequestEditorFocus={requestEditorFocus}
+          ref={aiEditBoundaryRef} runtime={aiRuntime}
+        />
+      </AiEditErrorBoundary>
+    </WorkspaceLayout>
+  );
+}

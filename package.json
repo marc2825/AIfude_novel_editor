@@ -1,0 +1,64 @@
+{
+  "name": "aifude",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "launch": "node scripts/launch.ts",
+    "dev": "next dev --hostname 127.0.0.1",
+    "start": "next start --hostname 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:e2e": "playwright test && playwright test --config playwright.privacy.config.ts && playwright test --config playwright.local.config.ts && playwright test --config playwright.chatgpt.config.ts && playwright test --config playwright.comparison.config.ts && playwright test --config playwright.mobile.config.ts",
+    "test:e2e:pwa": "playwright test --config playwright.pwa.config.ts",
+    "test:e2e:sync": "playwright test --config playwright.sync.config.ts",
+    "check": "tsc --noEmit && eslint . && vitest run",
+    "build": "next build && node scripts/build-offline.mjs"
+  },
+  "engines": {
+    "node": ">=24.21.0 <25",
+    "pnpm": "10.34.5"
+  },
+  "packageManager": "pnpm@10.34.5",
+  "pnpm": {
+    "overrides": {
+      "minimatch@>=7.0.0 <11.0.1": "11.0.1"
+    }
+  },
+  "dependencies": {
+    "@tiptap/core": "3.31.3",
+    "@tiptap/extension-document": "3.31.3",
+    "@tiptap/extension-paragraph": "3.31.3",
+    "@tiptap/extension-text": "3.31.3",
+    "@tiptap/pm": "3.31.3",
+    "@tiptap/react": "3.31.3",
+    "diff": "9.0.0",
+    "idb": "8.0.3",
+    "jose": "6.2.12",
+    "next": "16.4.1",
+    "openai": "7.20.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.6.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "24.13.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.1",
+    "fake-indexeddb": "6.2.5",
+    "fast-check": "4.10.1",
+    "jsdom": "30.1.0",
+    "typescript": "6.0.3",
+    "vite": "8.3.3",
+    "vitest": "5.0.3"
+  }
+}

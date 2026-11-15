@@ -1,0 +1,14 @@
+.panel { font-size: .9rem; }
+.panel p { line-height: 1.7; overflow-wrap: anywhere; }
+.panel details { border-bottom: 1px solid var(--line); padding-block: .5rem; }
+.panel summary { cursor: pointer; min-height: 44px; display: list-item; padding-block: .7rem; }
+.panel label { display: grid; gap: .4rem; margin-block: .7rem; }
+.panel label:has(input[type="checkbox"]) { display: flex; align-items: center; min-height: 44px; }
+.panel input[type="checkbox"] { width: 20px; height: 20px; flex: none; }
+.panel input:not([type="checkbox"]), .panel select { width: 100%; min-width: 0; min-height: 44px; font-size: 1rem; }
+.panel button { min-height: 44px; margin: .3rem; max-width: 100%; }
+.horizontal, .vertical { background: var(--paper); border: 1px solid var(--line); padding: 1rem; overflow: auto; max-width: 100%; font-family: "Yu Mincho", "Noto Serif CJK JP", serif; font-size: 1rem; line-height: 2.2; white-space: pre-wrap; overflow-wrap: anywhere; }
+.vertical { writing-mode: vertical-rl; text-orientation: mixed; height: 60dvh; width: 100%; }
+.horizontal p, .vertical p { font-size: inherit; line-height: 2.2; margin: 0 0 .5em; }
+.emphasis { text-emphasis: filled sesame; }
+.exportText { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45dvh; overflow: auto; }

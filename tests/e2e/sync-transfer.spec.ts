@@ -1,0 +1,33 @@
+import { readFile } from "node:fs/promises";
+import { expect, test } from "@playwright/test";
+import { parseSyncPayload } from "../../src/domain/sync";
+import { manuscriptEditor } from "./ai-edit-helpers";
+
+test("C-01/06/07: unconfigured sync exports a secret-free transfer and imports only an explicit copy", async ({ page }) => {
+  const sent: string[] = []; page.on("request", (request) => { if (request.url().includes("/api/sync")) sent.push(request.method()); });
+  await page.goto("/"); const editor = manuscriptEditor(page); await expect(editor).toBeEditable();
+  await editor.fill("端末移行前の原稿。😀"); await page.getByRole("button", { name: "保存", exact: true }).click();
+  await page.getByRole("button", { name: "ファイルとバックアップ", exact: true }).click();
+  const panel = page.getByRole("region", { name: "端末同期", exact: true });
+  await expect(panel.getByText(/^接続先は未設定/u)).toBeVisible(); await expect(panel.getByRole("checkbox")).not.toBeChecked();
+  await expect(panel.getByRole("button", { name: "送信待ちを送る・再送" })).toBeDisabled();
+  await panel.getByText("ファイルで端末移行・コピー復元", { exact: true }).click();
+  const download = page.waitForEvent("download"); await panel.getByRole("button", { name: "端末移行用ファイルを書き出す" }).click();
+  const path = await (await download).path(); if (!path) throw new Error("Missing download");
+  const text = await readFile(path, "utf8"); const payload = parseSyncPayload(JSON.parse(text));
+  expect(text).not.toContain("aiConsent"); expect(text).not.toContain("aiModelPreference"); expect(text).not.toContain("storageVersion");
+  await page.getByRole("button", { name: "サイドパネルを閉じる" }).click(); await editor.fill("現在の原稿は書き続けています。");
+  await page.getByRole("button", { name: "保存", exact: true }).click(); await page.getByRole("button", { name: "ファイルとバックアップ", exact: true }).click();
+  const upload = panel.getByLabel("端末移行用ファイルを確認", { exact: true });
+  await upload.setInputFiles({ name: "invalid.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ ...payload, apiKey: "fixture-private" })) });
+  await expect(panel.getByText(/操作を完了できませんでした/u)).toBeVisible(); await expect(editor).toHaveText("現在の原稿は書き続けています。");
+  await upload.setInputFiles({ name: "transfer.json", mimeType: "application/json", buffer: Buffer.from(text) });
+  await expect(panel.getByRole("region", { name: "同期原稿の確認" })).toBeVisible(); await expect(editor).toHaveText("現在の原稿は書き続けています。");
+  await panel.getByRole("button", { name: "この原稿と履歴をコピーとして復元" }).click();
+  await expect(panel.getByText(/1作品をコピーとして復元/u)).toBeVisible(); await expect(editor).toHaveText("現在の原稿は書き続けています。");
+  await page.getByRole("button", { name: "サイドパネルを閉じる" }).click();
+  const files = page.getByRole("combobox", { name: "保存済み作品を開く" });
+  const copy = await files.locator("option").evaluateAll((options, originalId) => options.map((option) => option.getAttribute("value")).find((id) => id && id !== originalId), payload.workspace.project.id);
+  if (!copy) throw new Error("Missing restored copy"); await files.selectOption(copy);
+  await expect(editor).toHaveText("端末移行前の原稿。😀"); expect(sent).toEqual([]);
+});

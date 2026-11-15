@@ -1,0 +1,295 @@
+# Requirements
+
+## Product Goals
+
+G-01：外部チャットへのコピー＆ペーストより少ない操作で、選択範囲の改善案を比較・適用できる。
+
+G-02：ユーザーが文章の著者であり続ける。AIによる本文変更には毎回明示的なAcceptが必要。
+
+G-03：AIが利用できない状態でも、本文入力、Undo/Redo、自動保存、書き出しが利用できる。
+
+G-04：古いAI応答による誤置換を防止する。
+
+G-05（Task 12.1）：入力したプロンプトから文章を作り、確認後にカーソル位置へ挿入できる。複数AIを明示選択した場合は同じ送信内容を同時に送り、結果を比較して1件だけを採用できる。
+
+G-06（Task 13.1）：作品の設定・背景・登場人物を手入力メモとしてアプリ内に保存・バックアップできる。AI生成ごとに参照ON/OFFを選べ、初期OFFでは送信しない。これはユーザーが明示依頼した3つのメモ欄に限定し、将来のCharacter / World / Story Stateの構造化保存・検索・自動更新を許可するものではない。
+
+G-07（Task 14.1）：未保存メモの破棄を確認し、設定・背景・登場人物の参照を個別選択できる。本文とメモを明示保存し、JSON／テキストの読込、新規作品、作品ごとのタブと保存済み一覧からの切替を提供する。タブを閉じてもデータを削除せず、保存失敗時は現在の本文とdraftを維持する。
+
+## Non-goals
+
+V0.1では以下を実装しない。
+
+- 全文自動生成、続きを自動執筆する機能
+- 常時表示チャット
+- リッチテキスト装飾、画像、表、脚注
+- 複数章の管理UI（作品ごとのタブはTask 14.1の明示依頼で追加）
+- アプリ独自のログイン・課金・公開SaaS（ChatGPTサブスクのprovider認証だけはTask 11.1で対応）
+- クラウド同期、共同編集
+- Character、World、Summary、Story Stateの実機能
+- 文体の自動学習、編集履歴の永続化
+- partial Accept、ブラウザーへの候補streaming（ChatGPTサブスクのserver内SSE受信だけはTask 11.1の承認により許可）
+- スマートフォン向けの最適化
+- PWAやインストール可能なデスクトップパッケージ
+
+## Target User
+
+日本語を中心とする小説を自分で書き、必要な範囲だけを推敲したい個人。
+
+V0.1はデスクトップブラウザーと物理キーボードを前提とする。
+
+## User Stories
+
+- US-01：通常の文章エディタとして小説を書き、再読み込み後も続きから編集したい。
+- US-02：一文または数段落を選び、文体や意味を保った改善案が欲しい。
+- US-03：候補の違いを見てから採用したい。
+- US-04：気に入らない候補をRejectまたはRetryしたい。
+- US-05：AI待機中も執筆を続けたい。
+- US-06：AI適用をUndoでまとめて戻したい。
+- US-07：何が外部へ送られるか確認したい。
+- US-08：ローカルデータを自分でバックアップしたい。
+
+## Functional Requirements
+
+### FR-01 本文編集
+
+- schemaはdocument、paragraph、textのみ。
+- paragraphは1個以上。
+- 改行は段落の区切りとして扱う。
+- EnterとShift + Enterはどちらも段落分割とする。
+- HTML貼り付けはプレーンテキストへ変換する。
+- 画像やファイルのdropによってdocumentを変更しない。
+- CRLFとCRは入力境界でLFへ正規化する。
+- 空白、全角空白、先頭・末尾の改行を勝手に削除しない。
+
+### FR-02 選択
+
+- TextSelectionを取得できる。
+- AllSelectionは最初と最後のparagraph内の文字位置へ正規化する。
+- NodeSelection等はAI編集対象にしない。
+- 選択された文字列とPM位置を別々に保持する。
+- 空文字または空白・改行だけの選択は送信しない。
+
+Task 12.1の挿入モードだけは、空のTextSelectionを挿入点としてsnapshotに保存する。空白だけの非空選択は従来どおり拒否する。
+
+### FR-03 コマンド起動
+
+- editorにフォーカスがある場合のCmd/Ctrl + Kで起動する。
+- IME composition中は起動しない。
+- 空のTextSelectionでは「AI文章挿入」を開く。非空の有効選択では従来の編集コマンドを開き、空白だけの選択には選択の案内を表示する。
+- 選択上限を超える場合は文字数と上限を表示し、送信しない。
+
+### FR-04 指示とプリセット
+
+- 自由指示を入力できる。
+- プリセットは「自然に」「短く」「台詞を自然に」「前後の接続を改善」。
+- プリセット選択時は指示欄とEdit Intentを設定する。
+- 標準候補数は2。ユーザーが3へ変更できる。
+- 挿入モードは標準1案、最大3案、各3,000文字以内。標準では入力プロンプトだけを送信し、本文や作品設定を暗黙に送らない。Task 13.1の保存済み作品メモリだけは参照を明示ONにした場合に追加できる。
+- 指示変更や候補数変更後に、旧候補をAcceptできない。
+
+### FR-04a Provider / Model設定
+
+- AIモデルは作品単位で`automatic`またはcanonical model IDとして記憶する。
+- Settingsではアプリがallowlistした、現在のproviderに対応するモデルだけを選択できる。
+- `automatic`は文章内容による動的routingではなく、serverの設定済みdefault modelを使う。
+- 明示選択が現在利用できない場合は別modelへfallbackせず、利用不可を表示して生成しない。
+- model、Edit Intent、StyleProfile / manualStyle、task instructionは独立した概念として扱う。
+- model説明はprovider由来の位置付けとworkflow上のcapabilityに限定し、文学的品質をrankingしない。
+
+### FR-05 文脈
+
+V0.1で参照できる情報は以下だけ。
+
+- 選択範囲
+- 直前の本文
+- 直後の本文
+- 作品共通プロンプト
+- 手動文体設定
+- ユーザーの編集指示
+- サーバーで決定したEdit Intent
+
+章全体を暗黙に送らない。
+
+### FR-06 候補
+
+各候補に以下を表示する。
+
+- 置換後本文
+- 短い変更説明
+- 注意事項
+- 原文とのDiff
+
+受信した候補は表示するだけであり、本文を変更しない。
+
+### FR-07 Accept
+
+Accept直前にsnapshot、request、candidate、document、selection、contextを再検証する。
+
+検証成功時だけ選択範囲を置換する。
+
+挿入モードでは、検証成功時だけ保存したcaret位置に挿入する。caretを移動して元に戻しても旧snapshotを再利用しない。いずれのモードでもAccept以外で本文を変更しない。
+
+選択範囲外のプレーンテキストは完全に不変でなければならない。
+
+適用後は挿入範囲の末尾付近にcaretを置く。
+
+### FR-08 Reject
+
+候補を破棄して閉じる。本文とUndo履歴を変更しない。
+
+### FR-09 Retry
+
+同じ有効snapshotと現在の指示から、新しいrequest IDで生成する。
+
+開始時に旧候補を無効化する。
+
+staleなsnapshotからはRetryできない。選択し直して新しいセッションを開く。
+
+### FR-10 stale
+
+次のいずれかでAIセッションを無効化する。
+
+- 文書を変更するtransaction
+- 実質的なPM selectionの変更
+- editor instanceの変更
+- 文書または章の切替・再読み込み・import
+- 共通プロンプトまたは手動文体設定の変更
+- AIモデル選択の変更
+- 外部送信同意の撤回
+- 編集権限の喪失
+
+同じ文字列へUndoした場合も、自動的に有効状態へ戻さない。
+
+### FR-11 保存
+
+- IndexedDBへ自動保存する。
+- debounceは500ms、継続入力時の最大待機は2秒。
+- 保存処理は直列化する。
+- 古い保存完了によって新しい変更を「保存済み」と表示しない。
+- AI Accept後は保存を即時予約する。
+- APIエラーと保存エラーを独立して表示する。
+
+### FR-12 バックアップ
+
+- 現在の本文をUTF-8テキストとして書き出せる。
+- 本文と設定をversion付きJSONとして書き出せる。
+- JSONバックアップを検証して取り込める。
+- import前に上書き確認と現在データの書き出し手段を提供する。
+- import時にAI同意、実行中request、候補、Undo履歴を復元しない。
+
+## Non-functional Requirements
+
+- TypeScript strict。
+- AIなしで主要編集機能が動作する。
+- 本文の正本を二重管理しない。
+- provider固有コードをUIから分離する。
+- 非同期結果はidentityとrevisionで検証する。
+- 未使用の将来機能コードを置かない。
+
+## UX Requirements
+
+- 編集領域が画面の中心である。
+- AI入力欄は選択位置に関連付けて表示する。
+- チャット履歴を常設しない。
+- Generating中でも本文は編集可能。
+- 候補はeditor document外に表示する。
+- stale時は採用不能であることを明示する。
+- AI適用前に本文を一時的に置き換えるプレビューをしない。
+
+## AI Requirements
+
+- 返答形式はStructured Outputを優先する。
+- provider返答をアプリ側で再検証する。
+- 原則として物語上の事実、人物、POV、時系列、台詞の意味を維持する。
+- 指示が不明確な場合、許可変更を広げない。
+- 同一候補、原文と同一の候補、空白だけの候補を採用可能にしない。
+- 意味保存や矛盾不存在を保証したと表示しない。
+
+## Data Requirements
+
+永続化するもの：
+
+- Project
+- Document
+- Chapter本文
+- 共通プロンプト
+- 手動StyleProfile
+- provider単位の送信同意
+- workspace単位のAIモデル設定
+- 保存用versionとtimestamp
+
+V0.1で永続化しないもの：
+
+- 選択範囲
+- EditRequest
+- EditCandidate
+- EditHistory
+- AbortController
+- editor instance ID
+- Undo/Redo stack
+
+## Privacy Requirements
+
+- 外部AIは初期状態で未同意。
+- 初回送信前にprovider名と送信内容の種類を表示する。
+- 共通プロンプトと文体設定も送信対象であることを明示する。
+- 本文・候補・指示をアクセス解析へ送らない。
+- 候補を学習用データとして自動保存しない。
+- provider側の保存・保持方針を、アプリが一律に保証しない。
+
+## Error Handling
+
+- API失敗：本文不変。指示を保持して再試行可能。
+- timeout：本文不変。明示的Retryのみ許可。
+- 無効出力：候補を表示せず、検証失敗を表示。
+- stale：AcceptとRetryを無効化。
+- 保存失敗：本文をメモリに維持し、未保存表示と書き出しを提供。
+- 読み込み失敗：空文書で既存保存を上書きしない。
+- 不明な保存schema version：編集を開始せず、復旧方法を表示。
+
+## Accessibility
+
+- 全操作をキーボードで実行できる。
+- focus indicatorを消さない。
+- 候補切替はtablistとして実装する。
+- 通信状態は控えめなlive regionで通知する。
+- 本文や候補全文をlive regionへ流さない。
+- Diffは色だけに依存せず、追加・削除を区別する。
+- 自動アクセシビリティ検査でcritical/seriousの問題を残さない。
+
+## Performance
+
+基準データは日本語約10万コードポイント、約2,000段落。
+
+- 通常入力の次回描画までの遅延は、基準端末でp95 50ms以下を目標とする。
+- selection snapshot取得は100ms以下を目標とする。
+- Diffは150msで計算を打ち切り、並列表現へfallbackする。
+- inactiveな候補のDiffを先行計算しない。
+- 一般的な保存操作でeditor入力をブロックしない。
+
+これらは実測目標であり、すべての端末への保証ではない。測定条件を記録する。
+
+## Security
+
+- APIキーはサーバー専用環境変数。
+- APIは同一originのJSON POSTのみ受け付ける。
+- request bodyの実測上限は64KiB。
+- provider返答の読み込み上限は128KiB。
+- 外部送信前にserver側で上限、provider/model allowlist、必要capability、同意、rate limitを検証する。
+- HTMLを信頼せず、文字列として表示する。
+- V0.1の実AI APIを公開インターネットへ露出させない。
+
+## MVP Scope
+
+Phase 0からPhase 9までがV0.1。
+
+リリース条件は、中心UX、保存、stale防止、Undo、IME、キーボード操作、privacyの検査を通過すること。
+
+## Future Scope
+
+- V0.2：Character、World、Chapter Summary、関連文脈検索。
+- V0.3：Story State、POV、Timeline、Voice、Consistencyの警告。
+- V0.4：opt-inの履歴保存、ユーザー本人のStyle Profile、嗜好学習。
+
+将来機能は明示的な新規実装計画が承認されるまで着手しない。

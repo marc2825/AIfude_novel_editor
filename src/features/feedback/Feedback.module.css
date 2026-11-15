@@ -1,0 +1,18 @@
+.panel { font-size: .9rem; }
+.panel h3, .panel h4 { margin: .8rem 0 .4rem; }
+.panel p { line-height: 1.7; overflow-wrap: anywhere; }
+.panel label { display: grid; gap: .4rem; margin-block: .6rem; }
+.panel textarea { width: 100%; min-height: 7rem; }
+.panel button { min-height: 44px; }
+.panel fieldset { min-width: 0; margin: 0; padding: .6rem; border: 1px solid var(--line); }
+.panel input:not([type="checkbox"]), .panel select { width: 100%; min-width: 0; min-height: 44px; font-size: 1rem; }
+.panel textarea { min-width: 0; font-size: 1rem; }
+.panel textarea[rows="1"] { min-height: 44px; height: 44px; }
+.panel textarea[rows="2"] { min-height: 5rem; }
+.panel summary { padding-block: .7rem; line-height: 1.5; overflow-wrap: anywhere; cursor: pointer; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; }
+.stats dd { margin: 0; }
+.issues { padding-left: 1.2rem; }
+.issues li { margin: 1rem 0; padding-bottom: .75rem; border-bottom: 1px solid var(--line); }
+.actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.text { white-space: pre-wrap; overflow-wrap: anywhere; }
