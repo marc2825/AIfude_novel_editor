@@ -113,7 +113,12 @@ test("keeps editing and saving after local inference fails without retrying", as
   await expect(editor).toHaveText("前対象後");
   expect(requests).toHaveLength(1);
   await dialog.getByRole("button", { name: "キャンセル", exact: true }).click();
-  await editor.fill("障害後も編集と保存");
+  await expect(dialog).toBeHidden();
+  await expect(editor).toBeFocused();
+  // Use editor keyboard events after focus returns so PM observes the full selection.
+  await editor.press("ControlOrMeta+a");
+  await page.keyboard.insertText("障害後も編集と保存");
+  await expect(editor).toHaveText("障害後も編集と保存");
   await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
   await page.reload();
   await expect(editor).toHaveText("障害後も編集と保存");
