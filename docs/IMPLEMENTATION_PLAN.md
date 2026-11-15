@@ -1012,3 +1012,39 @@ Acceptance Criteria：
 - 移行フォルダと圧縮ファイルを提供し、ファイル内容・実行属性・相対文書リンクを確認する。
 - 同じ配布内容の独立コピーでfrozen install・audit・check・build・標準／モバイル／PWA／同期E2Eを実行し、結果と未実施を区別する。
 - 新リポジトリへの移行手順と、公開前／公開切替時に所有者が行う残件をまとめる。GitHub作成・commit・push・公開デプロイは行わない。
+
+### Task 20.4：操作文字・ツールの視認性と開発時CSPの修正
+
+2026-11-15の明示依頼。移行済みの `AIfude_novel_editor` を対象に、ツール・タブの小さい文字、右端ツールの識別しづらさ、開発時のReact evalエラーを一つのTaskとして修正する。
+
+対象：操作UIのCSS、WorkspaceLayoutと装飾アイコン、NextのCSP、関連テスト・仕様。本文編集・保存・AI送信処理、依存バージョンは変更しない。
+
+Acceptance Criteria：
+
+- UIの基準文字を16px、主要なツール名を14px以上、作品タブを15pxにする。本文の文字サイズ設定は維持する。
+- 右端のAIツールはアイコンと日本語名を併記し、選択・focusを判別できる。native radioのキーボード操作を保ち、選択だけで本文変更・AI送信を行わない。
+- 320〜1024px幅でも既存のパネル、候補、採用ボタンが操作でき、横方向にはみ出さない。
+- 開発時のeval関連Console Errorを解消し、本番のページ／offline画面のCSPには `unsafe-eval` を含めない。
+- 型・lint・関連component/unitテスト、build、デスクトップ／モバイル／PWA E2Eを実行する。実機IMEは未実施として明記する。commit・pushは行わない。
+
+#### Task 20.4の変更・検査結果（2026-11-16）
+
+変更ファイル：`src/app/globals.css`、`src/features/workspace/Workspace.module.css`、`WorkspaceLayout.tsx`、新規`WorkspaceIcon.tsx`、`src/features/ai-edit/AiEdit.module.css`、`src/features/editor/Editor.module.css`、`next.config.ts`。テストは `tests/unit/security-headers.test.ts`、`tests/e2e/bootstrap.spec.ts`、`tests/e2e/workspace-design.spec.ts`、`tests/pwa/offline.spec.ts`。文書は本計画、UX、SECURITY、DECISIONS。
+
+Acceptance Criteriaはすべて自動検査で確認した。操作文字の拡大、装飾SVGと名称の併記、native radio・パネルのキーボード操作、選択だけでは本文・AI送信を変えない境界を維持。上部配置を詰め、本文の開始位置と幅も既存の基準を維持した。狭い画面で診断ボタンを遮る開発用ステータスバッジを非表示にしたが、コンパイル・実行時エラーの表示は維持している。
+
+| 検査 | 結果 |
+|---|---|
+| `pnpm install --frozen-lockfile --offline` | 成功。依存追加・更新なし |
+| `pnpm check` | 型・lint成功、85ファイル / 1,088テスト成功 |
+| `pnpm test:e2e` | 105件成功（標準71、privacy 1、local 2、ChatGPT mock 2、比較6、モバイル23） |
+| `pnpm build` | 成功。静的PWA資産24件も生成 |
+| `pnpm test:e2e:pwa` | Chromium / WebKitの7件成功。本番CSP、オフライン保存・再起動・再接続も確認 |
+| 操作部のaxe-core検査 | 1440 / 1024 / 390 / 320px幅で指摘0件。アプリ設定ナビ・執筆ツール・作品タブを対象にWCAG 2 A/AA・2.1 A/AAを検査 |
+| 表示とキーボード | 同4幅のスクリーンショット確認、横はみ出しなし。矢印キーでのツール選択、Enterでパネルを開く、Escで戻る操作が成功 |
+
+初回の全体検査では、使用中の3000番ポートとの競合でランチャー4件が失敗した。アプリを停止せず、`unshare --user --map-root-user --net --fork sh -c 'ip link set lo up && pnpm check'` でネットワークを隔離して全件の成功を確認した。初回E2Eで検出した本文の開始位置と開発バッジの重なりは修正し、上表の全E2Eを再実行した。テストのskipや許容範囲の緩和はしていない。
+
+検査は同じソースの独立コピー、Node.js 24.21.0 / pnpm 10.34.5、Linuxで実施。ブラウザーの共有ライブラリは検査用の `LD_LIBRARY_PATH` / `NOVEL_WEBKIT_EXECUTABLE` で補い、製品の依存やOS設定を変更していない。反映時には変更対象の元ファイルhashを照合して、利用者の変更を上書きしないことを確認する。
+
+実機の日本語IME、実スマホの長押し選択、実スクリーンリーダーは未実施。操作部の自動検査でそれらを検証済みとは扱わない。保存後に新リポジトリ側の開発サーバーを再起動して再読み込みする。本番起動の場合は再buildが必要。commit・push・次Taskへの着手は行わない。

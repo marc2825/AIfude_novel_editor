@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { WRITING_TOOLS, type WritingToolId } from "../ai-edit/writing-tools";
+import { WorkspaceIcon } from "./WorkspaceIcon";
 import styles from "./Workspace.module.css";
 
 export type WorkspacePanelId = "memory" | "chapters" | "history" | "settings" | "connections" | "backup" | "feedback" | "typography";
@@ -36,20 +37,20 @@ export function WorkspaceLayout({ header, files, editor, panels, alerts, childre
     return () => { viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update); };
   }, []);
   function close() { onActiveChange(null); triggerRef.current?.focus(); }
-  function trigger(panel: WorkspacePanelId, text: string, symbol: string) {
+  function trigger(panel: WorkspacePanelId, text: string) {
     return <button type="button" disabled={panels[panel] === null} aria-label={LABELS[panel]} aria-expanded={active === panel}
       aria-controls={`workspace-panel-${panel}`} onClick={(event) => {
         triggerRef.current = event.currentTarget; focusPanelRef.current = active !== panel;
         onActiveChange(active === panel ? null : panel);
-      }}><span aria-hidden="true">{symbol}</span><span>{text}</span></button>;
+      }}><WorkspaceIcon name={panel} /><span>{text}</span></button>;
   }
   return <main className={styles.workspace} ref={rootRef}>
     <div className={styles.topbar}>
       {header}
       <nav aria-label="アプリの設定" className={styles.topActions}>
-        {trigger("backup", "ファイル", "▤")}
-        {trigger("connections", "AI接続", "✦")}
-        {trigger("settings", "設定", "⚙")}
+        {trigger("backup", "ファイル")}
+        {trigger("connections", "AI接続")}
+        {trigger("settings", "設定")}
       </nav>
     </div>
     {files}
@@ -80,14 +81,16 @@ export function WorkspaceLayout({ header, files, editor, panels, alerts, childre
             <input type="radio" name="writing-tool" aria-label={`${tool.label}（${tool.english}）`}
               checked={writingTool === tool.id} disabled={!onWritingToolChange}
               onChange={() => onWritingToolChange?.(tool.id)} />
-            <span>{tool.label}</span>
+            <span className={styles.writingToolOption}><WorkspaceIcon name={tool.id} /><span>{tool.label}</span></span>
           </label>)}
         </fieldset>
-        {trigger("feedback", "診断", "◎")}
-        {trigger("memory", "メモリ", "▧")}
-        {trigger("chapters", "章", "☷")}
-        {trigger("history", "履歴", "◷")}
-        {trigger("typography", "組版", "縦")}
+        <div className={styles.panelTools}>
+          {trigger("feedback", "診断")}
+          {trigger("memory", "メモリ")}
+          {trigger("chapters", "章")}
+          {trigger("history", "履歴")}
+          {trigger("typography", "組版")}
+        </div>
       </nav>
     </div>
     {children}

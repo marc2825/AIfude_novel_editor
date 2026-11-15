@@ -160,6 +160,8 @@ CSPは少なくともobject、base、frame ancestorを制限する。
 
 本番相当設定へ開発用unsafe-evalを持ち込まない。
 
+Task 20.4では `NODE_ENV === "development"` の場合だけscript-srcへ `unsafe-eval` を追加する。Reactの開発用デバッグ機能に必要なためであり、production・test・未設定では許可しない。[Next.js公式CSPガイド](https://nextjs.org/docs/app/guides/content-security-policy)に従う。本番buildの通常ページとoffline画面のHTTP headerでも不許可を検証する。その他のCSP、Host / Origin境界は維持する。
+
 CSPだけでXSS対策が完了したと扱わない。
 
 外部analytics、外部font、外部画像を標準で読み込まない。

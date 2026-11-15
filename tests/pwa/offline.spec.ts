@@ -6,6 +6,17 @@ import { manuscriptEditor, selectParagraphText } from "../e2e/ai-edit-helpers";
 import { prepareOffline, saveText } from "./helpers";
 import { networkOutageProxy } from "./network-outage";
 
+test("production pages retain CSP without development eval permission", async ({ request }) => {
+  for (const path of ["/", "/offline"]) {
+    const response = await request.get(path);
+    expect(response.ok()).toBe(true);
+    const csp = response.headers()["content-security-policy"];
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).not.toContain("'unsafe-eval'");
+  }
+});
+
 test("P-01–05: offline editing survives browser restart, caches are public only, recovery never sends AI", async ({ browserName, baseURL }) => {
   if (!baseURL) throw new Error("Missing URL");
   const proxy = await networkOutageProxy(baseURL); baseURL = proxy.origin;

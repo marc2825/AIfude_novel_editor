@@ -569,3 +569,9 @@ LICENSEに正式なApache-2.0本文、NOTICEに著作権表示、package.jsonに
 D-044のコミット済みHEADからの書き出しを既定として維持し、コミットを伴わず依頼された修正を提供するため、明示的な `--working-tree` と `--include=相対パス` を追加する。HEADに含まれる配布対象の現ファイルと指定された新規ファイルだけを読み、他の未追跡ファイルは含めない。追加ファイルにも除外規則・通常ファイル確認を適用する。元のGit index・履歴を変更せず、既存出力の上書きやsymlink経由の混入を拒否する。
 
 配布物はソースのみとし、node_modules・ビルド・ブラウザー・CLI binaryを含めない。新しいGit履歴は所有者が別フォルダで開始する。旧履歴のmirror・mergeや、既存リポジトリのpublic化は行わない。
+
+## D-047：開発時だけReactのevalを許可する
+
+Status: Accepted（2026-11-15、所有者が開発時のCSP Console Error修正を明示依頼）。Task 20.4。
+
+Reactの開発用デバッグが使うevalを `NODE_ENV === "development"` のときだけCSPへ許可する。本番・test・未設定では許可しない。Console Errorを隠す方法や全環境のCSPを緩める方法は採用しない。保存形式・依存の移行は不要。環境別unit test、開発時Console Error、本番HTTP headerとPWAで検証する。[根拠](https://nextjs.org/docs/app/guides/content-security-policy)。

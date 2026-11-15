@@ -1,7 +1,7 @@
 .editorSection { width: 100%; }
 .editorHeader { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .25rem clamp(1rem, 3vw, 3rem); background: var(--paper); border: 1px solid var(--line); border-bottom: 0; border-radius: .65rem .65rem 0 0; }
-.editorHeader h2 { margin: 0; color: var(--muted); font-size: .75rem; font-weight: 500; letter-spacing: .12em; }
-.editorHeader p { margin: 0; color: var(--muted); font-size: .7rem; }
+.editorHeader h2 { margin: 0; color: var(--muted); font-size: .875rem; font-weight: 500; letter-spacing: .12em; }
+.editorHeader p { margin: 0; color: var(--muted); font-size: .875rem; }
 .editorHeader kbd { font: inherit; margin-left: .8rem; padding: .15rem .3rem; border: 1px solid var(--line); border-radius: .25rem; }
 .editor :global(.tiptap) {
   min-height: max(28rem, calc(100dvh - 22rem));
@@ -26,8 +26,8 @@
 .editor :global(.tiptap p) { min-height: 2.25em; margin: 0; }
 .contextMenu { position: fixed; z-index: 40; width: 240px; max-width: calc(100vw - 16px); padding: .4rem; background: var(--paper); border: 1px solid var(--line); border-radius: .7rem; box-shadow: 0 12px 40px #293b3729; }
 .contextMenu button { display: flex; width: 100%; align-items: center; justify-content: space-between; border: 0; padding: .7rem; color: var(--accent); font-weight: 600; }
-.contextMenu kbd { font: .7rem system-ui; color: var(--muted); }
-.contextMenu p { margin: .25rem .7rem .5rem; color: var(--muted); font-size: .72rem; }
+.contextMenu kbd { font: .875rem system-ui; color: var(--muted); }
+.contextMenu p { margin: .25rem .7rem .5rem; color: var(--muted); font-size: .875rem; }
 @media (max-width: 42rem) {
   .editorHeader kbd { display: none; }
   .editorHeader { padding-inline: 1rem; }

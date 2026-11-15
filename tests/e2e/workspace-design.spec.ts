@@ -1,5 +1,39 @@
 import { expect, test } from "@playwright/test";
 import { manuscriptEditor, selectParagraphText } from "./ai-edit-helpers";
+import { WRITING_TOOLS } from "../../src/features/ai-edit/writing-tools";
+
+test("shows readable icon tools and preserves keyboard selection without sending or editing", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  let requests = 0;
+  page.on("request", (request) => { if (/\/api\/ai\/(edits|comparisons|dictionary)/u.test(request.url())) requests++; });
+  await page.goto("/");
+  const editor = manuscriptEditor(page);
+  await expect(editor).toBeEditable();
+  await editor.fill("本文はツールの選択だけでは変更しません。");
+  const rail = page.getByRole("navigation", { name: "執筆ツール", exact: true });
+  for (const tool of WRITING_TOOLS) {
+    const radio = rail.getByRole("radio", { name: `${tool.label}（${tool.english}）`, exact: true });
+    const label = radio.locator("..");
+    await expect(label.locator("svg")).toHaveAttribute("aria-hidden", "true");
+    const text = label.getByText(tool.label, { exact: true });
+    expect(await text.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(14);
+    const bounds = await label.boundingBox();
+    expect(bounds?.height).toBeGreaterThanOrEqual(44);
+    expect(bounds?.width).toBeGreaterThanOrEqual(44);
+  }
+  const fileTab = page.getByRole("tablist", { name: "開いている作品" }).getByRole("tab").first();
+  expect(await fileTab.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(15);
+  await rail.getByRole("radio", { name: "書き直し（Rewrite）", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(rail.getByRole("radio", { name: "文体変換（Transform）", exact: true })).toBeChecked();
+  await rail.getByRole("button", { name: "作品メモリ", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "サイドパネルを閉じる" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(rail.getByRole("button", { name: "作品メモリ", exact: true })).toBeFocused();
+  await expect(editor).toHaveText("本文はツールの選択だけでは変更しません。");
+  expect(requests).toBe(0);
+});
 
 test("keeps the manuscript prominent and preserves hidden panel drafts and the editor", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
