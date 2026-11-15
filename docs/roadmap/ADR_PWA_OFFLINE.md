@@ -1,16 +1,25 @@
-# Phase 5: PWAとオフライン復旧
+# Phase 5：PWAとオフライン復旧
 
-2026-10-28。P-01〜05、M-04/07。Workspace v6/DB v4を維持。変更予定: manifest/icon、静的offline route、build時の資産manifest、Service Worker、接続状態UIとAI送信境界、IndexedDB durability、production Chromium/WebKit E2E。
+2026-10-28の設計。P-01〜05、M-04/07を対象とし、Workspace v6 / DB v4を維持する。
 
-- `/`は従来通り動的AI実行設定を読み、キャッシュしない。`/offline`はサーバー設定/credentialを一切読まない静的shellで同じWorkspaceAppを起動し、IndexedDBの既存原稿をロードする。初期AIは利用不可。
-- オフライン利用の有効化は明示操作。SWはビルドで列挙した静的assetとoffline shell/manifest/iconだけをcredentialなしで取得する。navigationの動的HTML、API、AI応答、本文、認証データはCacheStorageへ入れない。読み込み失敗したinstallは不完全なcacheを削除し、旧SWを維持。
-- 新SWでskipWaitingや自動reloadをしない。古いタブが閉じて自然にactivateした後だけ旧cacheを掃除する。本文はcacheから復元せず、検証済みIndexedDBとバックアップを正とする。
-- navigator.onLineの切断通知でAIの生成/比較/辞書/Feedbackを無効化し、進行中の候補を失効させる。クライアント送信境界でも接続を確認。復旧してもAIの再実行はしない。offline shellからのオンライン接続復帰は明示操作で保存成功後に通常画面へ戻る。
-- IndexedDBのreadwrite transactionはstrict durabilityを指定し、保存完了の通知はtransaction.done後。persist()の結果を正直に表示し、OSによるデータ削除まで防げるとは主張しない。
-- テスト: SWのallowlist/credential omit/更新失敗/キャッシュ漏洩、offline編集→reload→ブラウザ再起動/Chromium crash、復旧後の無断AI再送なし、2つのブラウザengine、既存全回帰。OSのホーム画面install/IME/休止・容量圧迫はNOT RUN。
+## 保存する画面
 
-参考: [Next PWA](https://nextjs.org/docs/app/guides/progressive-web-apps)。使用APIは固定されたローカル依存の型と本番E2Eでも検証する。実サービスの公開・認証作成・デプロイは行わない。
+通常の `/` はAI設定を読む動的画面なのでキャッシュしない。`/offline` はサーバー設定・認証情報を読まない静的な画面とし、同じWorkspaceAppでIndexedDBの原稿を開く。AIは無効で始める。
 
-実装補足: navigation失敗時はURLを書き換えず静的offline shellを返す。キャッシュが退避/消去されても明示的な更新操作で静的資産を再準備できる。秘密を含む動的画面をfallbackへ使わない。
+利用者が準備を指示すると、Service Workerがビルド時に列挙した静的資産・画面・manifest・アイコンだけをcredentialなしで取得する。動的HTML、API、AI応答、本文、認証情報はCacheStorageへ入れない。準備に失敗したら不完全なキャッシュを消し、旧Service Workerを残す。
 
-WebKitのPlaywright `setOffline(true)` はSW navigation自体をinternal errorにする既知の問題があり、[upstream #42775](https://github.com/microsoft/playwright/issues/42775)と同じ症状を再現した。両engineの再読込/再起動試験はloopback中継のsocketを切断する実通信障害で検証する。`navigator.onLine`の切断通知と候補失効は別の両engine試験で検証する。iOS Safariの実機結果とは扱わない。
+## 更新と復旧
+
+新しいService Workerで `skipWaiting` や強制再読み込みはしない。古いタブが閉じて自然にactivateした後で、古いキャッシュを片付ける。原稿はキャッシュでなく、検証したIndexedDBとバックアップから復元する。
+
+`navigator.onLine` の切断通知で生成・比較・辞書・Feedbackを無効にし、候補を期限切れにする。送信直前にも接続を確認する。復旧時にAIを自動再送しない。通常画面へ戻る操作は、利用者の指示と保存成功を待つ。
+
+IndexedDBはreadwriteトランザクションにstrict durabilityを指定し、`transaction.done` の後で保存済みと表示する。`persist()` の結果もそのまま示す。OSによる削除まで防げるとは案内しない。
+
+## 検査
+
+キャッシュの許可リスト・認証情報の除外・更新失敗、オフラインでの編集・再読み込み・ブラウザー再起動・Chromiumクラッシュ後の復元、復旧時の無断AI送信がないことを検査する。キャッシュ消去後も、更新操作で資産を準備し直せることを確認する。動的な画面を代用キャッシュには使わない。
+
+WebKitの `setOffline(true)` ではService Workerのnavigation自体が失敗する症状を再現した（[upstream #42775](https://github.com/microsoft/playwright/issues/42775)）。両エンジンの復元試験には、ループバック中継のsocketを切断する通信障害を使う。切断通知と候補の失効は別に試験する。
+
+Chromium / WebKitの自動検査を、iOS SafariやOSへのホーム追加、実機IME、休止・容量不足の結果とは扱わない。参考：[Next.jsのPWAガイド](https://nextjs.org/docs/app/guides/progressive-web-apps)。

@@ -1,233 +1,118 @@
-# Security and Privacy
+# セキュリティとプライバシー
 
-## Task 18.5：内容指定の文脈挿入
+AIFUDEは、利用者自身のPCで動く単一ユーザー向けアプリとして設計する。報告窓口は [SECURITY.md](../SECURITY.md)、接続手順は [AIの接続方法](AI_CONNECTIONS.md) を参照する。
 
-`context-insert`は空のselectionTextと必須の内容指示・目標文字数を共通schemaで検証する。任意位置でも元の本文を削除せず、ゼロ幅snapshotだけを同期Acceptで適用する。前後の本文・作品資料は未信頼の参照データとし、挿入位置の座標をモデルへ送らない。既存の同意・API opt-in・予算・rate limit・出力検証と遅延応答拒否を使い、別providerへの自動切替を行わない。
+## 想定する脅威
 
-## Task 18.4：文脈付き補完
+認証情報の流出、他サイトからの無断呼び出し、DNS rebinding、過大入力と費用、原稿のログ漏えい、プロンプトインジェクション、XSS、古い応答の誤適用、別タブの上書きを防ぐ。端末・ブラウザー拡張・OSアカウント自体が侵害された場合の完全な保護は対象外とする。
 
-補完は明示選択したモード・生成操作に限定する。clientとserverでoperationごとの選択文字列・前後文脈・目標文字数を検証し、必要な文脈が欠ける入力や不明fieldをprovider前に拒否する。本文から前後各最大1,000文字、作品共通設定と明示ONのメモを送信対象として説明する。章全体や編集座標は送らない。生成本文は未信頼の文字列として検証・エスケープ表示し、同期的なsnapshot検証と明示Accept以外でdocumentへ適用しない。課金APIのopt-in・送信先同意・自動fallback禁止は従来どおり。
+## 実行環境とHost
 
-## Task 18.3：辞書照会と外部検索
+開発・本番のサーバーはループバックへbindする。`APP_ORIGIN` はlocalhost、127.0.0.1、IPv6ループバックのいずれかを持つ単一のoriginとして検証する。ワイルドカード、LANアドレス、公開ドメインは許可しない。設定値だけでなく、実際のbind先も確認する。
 
-辞書routeは同一origin・Host・Fetch Metadata・JSON・実測body上限の共通guardを通し、語句だけを含むstrict requestを検証する。語句は1〜100コードポイントで、原稿・作品設定・メモ・任意prompt fieldは受け付けない。語句を未信頼JSONデータとしてserverで固定指示へ組み込み、既存のAPI許可・送信同意・接続照合・共有rate limiter・deadline・settings revisionで保護する。provider SDKやキーはclientへ公開しない。
+`src/proxy.ts` は全ルートのHostをAPP_ORIGINのhost・portへ完全一致させる。ページ・API・framework資産・画像・Service Workerも対象とする。APP_ORIGINが未設定の場合だけ `http://127.0.0.1:3000` を使い、不正値やHost欠落は403で拒否する。転送ヘッダーを許可の根拠にしない。Nextの画像最適化は `images.unoptimized: true` で無効にする。
 
-LLM説明はプレーン文字列で描画し、採用・本文挿入・自動リンク化を行わない。旧request IDの応答は破棄する。検索リンクは固定の`https://www.google.com/search`へ語句と「意味」だけをURLエンコードし、明示clickで別タブへ開く。`noopener noreferrer`と`referrerPolicy=no-referrer`を指定し、作品本文やアプリURLを参照元として送らない。リンクの表示・辞書を開く操作では検索先に接続しない。LLM説明を実検索や信頼できる出典として表示しない。
+ランチャーは127.0.0.1:3000に固定し、子プロセスのAPP_ORIGINも合わせる。依存導入、認証変更、LAN公開、ポート変更は自動で行わない。`GET /api/health` はアプリ名とUUID形式の起動識別子だけを返す。これは認証には使わない。ロックにはバージョンとUUIDだけを保存し、不明なロックや異常終了後のロックを自動削除しない。終了するのはランチャー自身のプロセスグループだけとする。
 
-## Threat model
+Origin検証を公開サービスの認証代わりに使わない。リバースプロキシ配下での公開運用も、現在の対象外である。
 
-V0.1は、ユーザー自身のPC上で動く単一ユーザー用アプリ。
+## リクエストの検証
 
-防止対象：
+AI APIは次をすべて要求する。
 
-- APIキーのクライアント流出
-- 他originからの無断API呼び出し
-- DNS rebinding等による意図しないhost受け入れ
-- 過大payload
-- provider費用の無制限増加
-- 本文や候補のログ漏えい
-- prompt injectionによる制約逸脱
-- 候補中のHTMLによるXSS
-- stale responseによる本文破損
-- 別タブの上書き
+- POST、`application/json`、厳格なリクエストスキーマ。
+- 設定と完全に一致するOriginとHost。実AI呼び出しでOrigin欠落を許可しない。
+- Fetch Metadataがある場合は同一origin。
+- 本文を実際に読み取って数えた64KiB以下のデータ。Content-Lengthだけには依存しない。
 
-端末そのもの、ブラウザーextension、OSアカウントが侵害された場合の完全保護は対象外。
+CORSで別originを許可せず、転送ヘッダーも無条件には信頼しない。プロバイダーやモデル、同意、出力上限はサーバーでも検証する。
 
-## Deployment boundary
+## 呼び出し回数と費用
 
-dev/startはloopbackへbindする。
+実AIはプロバイダーごとに同時1件、1分6件、1日100件までとする。単独生成と比較は同じ制限を共有する。比較は異なる2〜3接続を同時に呼べる。SDKの自動再試行は無効にする。
 
-`APP_ORIGIN`はloopback hostを持つ単一のoriginとして検証する。
+この制限はプロセス再起動で戻るため、費用の上限保証にはならない。提供元のアカウントにも上限を設定する。mockには課金用の制限を適用しないが、入力検証は共通とする。回数制限のテストは時計を制御して行う。
 
-許可するhostはlocalhost、127.0.0.1、IPv6 loopbackのいずれか。
+有料APIは `AI_ENABLE_PAID_API=true` の場合だけ構成する。画面の許可も初期OFFとし、リクエストの `allowPaidApi:true` と送信同意を検証する。比較対象に無許可のAPIがあれば、どの接続も呼び出さない。画面の許可は再読み込みでOFFへ戻り、作品の同意やバックアップから復元しない。利用枠不足を別のAIやAPI課金で自動補完しない。
 
-wildcard、任意のLAN address、公開domainをV0.1の実AI設定で許可しない。
+## 認証情報
 
-実際のbindとserver設定の両方を確認する。
+### ChatGPT
 
-公開deployの認証代わりにOrigin検証を使ってはならない。
+access / refresh / ID tokenはリポジトリ外のサーバー専用ファイルに保存する。既定値は `~/.local/share/novel-ai-editor/chatgpt/connection.json`。ディレクトリ0700、ファイル0600とし、シンボリックリンク・破損・過大なレコードを拒否する。原子的なrenameと排他的ロックで更新し、refreshの競合を防ぐ。残ったロックは自動削除せず処理を止める。
 
-Task 17.1のlauncherも127.0.0.1:3000へ固定し、子processのAPP_ORIGINをそのURLにする。依存install、credentialの変更、LAN公開、別portへの切替は自動実行しない。`GET /api/health`はapp名とUUID形式の起動識別子だけを返す。公開識別子は認証の代わりにならず、本文・設定・キー・認証statusを含めない。起動lockにはversionとUUIDだけを保存し、未知／残存lockを自動削除しない。launcherは所有するprocess groupだけを終了する。
+OAuth callbackは専用のループバックlistenerで受ける。state / nonce / PKCE、JWKS署名、issuer / audience / expiry / subject、plan用scopeを検証する。callbackは1回限り、5分で失効する。認証URLにID token hintを含めず、APIからトークンをブラウザーへ返さない。
 
-## Request guard
+接続解除ではローカルのトークンをすぐ無効化し、discoveryのrevocation endpointへ失効を要求する。遠隔失効を確認できなくてもローカルからは削除し、未確認の状態を画面に示す。
 
-`src/proxy.ts` は全ルートのHostを、検証済みAPP_ORIGINのhostとportへ完全一致させる。通常ページ・API・`/_next/static`・`/_next/image`・service workerを除外しない。APP_ORIGIN未設定時だけ `http://127.0.0.1:3000` を使い、不正な設定値やHost欠落は403で拒否する。forwarded Hostは許可の根拠にしない。Nextの画像最適化は `images.unoptimized: true` で無効にする。
+保存はUnixの所有者権限を前提とし、Linux / WSLで自動検査する。macOSは実機未検証。WindowsネイティブのACL対応はないため、WindowsではWSLを使う。
 
-AI routeは以下を要求する。
+### APIキーとClaude CLI
 
-- POST
-- application/json
-- Originが設定originと完全一致
-- Hostが設定hostと完全一致
-- Fetch Metadataが存在する場合は同一origin
-- 実測64KiB以下のbody
-- 厳格なrequest schema
+APIキーはサーバー環境変数だけに置く。`NEXT_PUBLIC_`、ブラウザー保存領域、URL、エラー、ログ、利用情報の送信、バックアップには含めない。SDKのモジュールには `server-only` を適用する。
 
-Content-Lengthだけに依存せず、body streamのbyte数を数える。
+Claudeの認証ファイルは公式CLIが専用ディレクトリで管理する。アプリはトークンを読まず、`auth status` で認証種別を確認する。ログイン方法は固定しない。サブスクリプション以外は `AI_ENABLE_PAID_API=true` の場合だけ生成する。
 
-欠落Originを、実AI呼び出しについて黙って許可しない。
+CLIはshellを介さず実行する。サーバー自身のAPIキー・gateway・debug・telemetryなどの環境変数を渡さず、本文はstdinだけへ渡す。履歴・ツール・MCP・カスタマイズ・hooks・fallback・retryは無効にし、stdout / stderrをログに転送しない。出力は256KiB、実行は180秒までとし、中止時には子プロセスを終了する。
 
-CORSで他originを許可しない。
+管理者の強制ポリシーと追加使用量は利用者が確認する。通常のテストは偽CLIを使い、実認証情報を読まない。任意のプロバイダーURLを生成リクエストから受け取ることも禁止する。
 
-forwarded headerを無条件に信頼しない。
+## ログと表示
 
-V0.1はreverse proxy配下の公開運用を想定しない。
+運用ログに残せるのはリクエストID、プロバイダーID、公開用エラーコード、処理時間、トークン使用量、HTTP statusだけ。本文・文脈・共通プロンプト・メモ・指示・候補・キー・未加工のエラー・リクエストや応答全体は残さない。一時的なconsole出力も削除する。
 
-## Rate and cost control
+本文・候補・メモはReactの文字列として描画し、`dangerouslySetInnerHTML` を使わない。AIのHTML・Markdown・URLは実行や自動リンク化をせず、差分もエスケープした文字列で示す。JSON取り込みではスキーマを検証し、任意オブジェクトをdeep mergeしない。
 
-実AIはprocess内のproviderごとに以下を制限する。単独生成routeと比較routeは同じproviderのlimiterを共有する。比較では異なる2〜3providerを同時実行できる。
+## ブラウザーの保護ヘッダー
 
-- 同時実行1件
-- 1分間6request
-- 1日100request
+AI応答は `Cache-Control: no-store`。nosniff、埋め込み禁止、不要なpermissionの制限を設定する。CSPでは少なくともobject・base・frame ancestorを制限する。
 
-process再起動でresetされるため、課金上限の保証ではない。
+`unsafe-eval` を許可するのは `NODE_ENV === "development"` の場合だけ。Reactの開発用デバッグに必要なためであり、本番・test・未設定では許可しない。[Next.jsのCSPガイド](https://nextjs.org/docs/app/guides/content-security-policy) に従い、本番の通常ページとoffline画面のHTTPヘッダーでも検査する。
 
-providerアカウント側にも利用上限を設定する。
+外部analytics・フォント・画像を標準で読み込まない。CSPだけにXSS対策を任せない。
 
-mockは課金用rate limitの対象外とするが、request guardと入力上限は適用する。
+## 送信先と同意
 
-rate limiter自体はfake clockで検証する。
+ローカルLLMは検証済みのループバックURLの `/v1/chat/completions` へ接続する。認証情報・query・fragmentを含むURL、LAN・公開host、リダイレクトを拒否する。設定APIだけがローカルURLとモデルIDの保存を許可し、同じ検証を行う。認証用の `LOCAL_LLM_API_KEY` はサーバー内だけで扱う。
 
-SDKの自動retryを無効化する。
+ローカル接続には外部送信同意を要求しない。ただし、推論サーバー自身の転送・ログ・保存は別に設定する必要があることを説明する。呼び出し回数の制限はローカルにも適用する。
 
-APIは`AI_ENABLE_PAID_API=true`を指定した場合のみ構成し、画面設定も初期OFFとする。API requestの`allowPaidApi:true`と送信先への同意を検証する。比較対象に無許可APIがあれば全対象を呼び出さず拒否する。画面設定はreloadでOFFへ戻り、保存済み送信同意・backupから復元しない。APIをサブスク枠として扱わず、利用枠不足をAPIや別providerで補わない。
+OpenAI APIの `store: false` は、提供元のあらゆるデータ保持を無効にする保証ではない。提供元、契約、アカウント設定による保持方針を説明する。同意はproviderとpolicy versionに結び付け、撤回後は新規送信を禁止し、処理中の通信を中止して候補を無効にする。送信済みの情報をアプリだけで回収できるとは表示しない。
 
-## Secret handling
+## ローカル保存
 
-ChatGPTのOAuth access / refresh / ID tokenはserver専用のrepository外credential fileへ保存する。directory 0700、file 0600とし、symlink・破損・過大recordを拒否する。原子的なrenameとfile lockで更新し、refreshの競合を防ぐ。残ったlockを勝手に破棄せずfail closedにする。既定pathは`~/.local/share/novel-ai-editor/chatgpt/connection.json`。本文のIndexedDB、バックアップ、client bundle、ログには含めない。
+本文・作品メモ・履歴は暗号化していない。端末やブラウザープロファイルを共有する相手から秘密になる保証はない。バックアップに未公開原稿が入ること、ブラウザーデータ削除・ストレージ回収・プライベートモードで失う可能性を説明する。削除には確認を求める。
 
-OAuth callbackは専用loopback listenerで処理し、state / nonce / PKCE、JWKS署名、issuer / audience / expiry / subject、plan用scopeを確認する。callbackは1回だけ消費し、5分で期限切れにする。認証URLにID token hintを含めず、API経由でtokenをbrowserへ渡さない。解除時はlocal tokenを即時無効化し、OpenAI discoveryのrevocation endpointへ失効を要求する。遠隔失効を確認できなくてもlocal tokenは削除し、未確認をUIに表示する。
+作品メモはセッションごとにAI参照OFF。ONの場合だけ選択した保存済みのメモを表示して送り、未選択項目の値は空文字にする。参照の選択はバックアップへ保存しない。メモや作品設定は未信頼のデータであり、制御指示に使わない。AGENTS.mdや認証情報を本文資料として読む機能も持たない。
 
-このcredential file方式はUnixのowner権限を要求する。Linux / WSLで自動検査し、macOSは実機未検証。native Windows serverのACL対応は未実装のため、Windows上ではWSLでserverを動かす。ブラウザー側のWindows IME確認とは別の制約である。
+ファイルを開く操作は10MiB以下のJSON / UTF-8テキストを新しい作品として読む。現在作品を置換する取り込みでは、別作品とのID衝突を拒否する。全作品で単一writerとバージョン比較を維持する。
 
-APIキーはserver環境変数のみ。
+履歴は最大50件、自動記録は初期OFF。作品削除では履歴もごみ箱へ移す。全作品バックアップは100MiBまでとし、コピー復元で新UUIDを発行して外部送信同意を初期化する。候補・認証情報・嗜好学習データは含めない。localStorageにはタブIDとカーソル・revisionだけを保存し、本文やメモは入れない。
 
-`NEXT_PUBLIC_`変数へ入れない。
+## 各AI機能の境界
 
-IndexedDB、localStorage、URL、error、telemetry、バックアップへ保存しない。
+文脈挿入は空の `selectionText`、内容指示、目標文字数を検証する。補完はモードごとの範囲・前後文脈を検証する。前後各最大1,000文字と設定・選択したメモを送るが、章全体や編集座標は送らない。結果は同期的なsnapshot検証と採用を経て適用する。
 
-provider SDKのmoduleへ`server-only`を適用する。
+辞書APIは共通のOrigin・Host・Fetch Metadata・JSON・実測サイズ検証を通す。語句は1〜100コードポイントとし、本文・設定・メモ・任意の指示を受け付けない。既存のAPI許可・同意・回数・時間・接続設定revisionの検証を使い、旧リクエストの応答を捨てる。
 
-Claudeサブスクでは公式CLIが専用認証ディレクトリを管理する。アプリはtokenを読み出さず`auth status`の認証種別を確認する。CLIのログイン方法を固定しない。subscription以外の認証は従量課金のため`AI_ENABLE_PAID_API=true`のときだけ使用する。server自身のAPIキー・gateway・debug・telemetry等の継承環境変数を渡さず、コマンドはshellを介さない。本文はstdinにだけ渡す。履歴保存・ツール・MCP・customization・hooks・fallback・retryを無効にし、stdout / stderrをログへ転送しない。CLI出力は256KiB、実行は180秒で制限し、abort時に子プロセスを終了する。CLIの管理者強制ポリシーとアカウントの追加使用量設定はユーザー側で確認する。通常テストは専用の偽CLIを使い実認証情報を読まない。
+辞書の説明は文字列で表示し、本文へ適用しない。Google検索は固定の `https://www.google.com/search` に語句と「意味」だけをURLエンコードし、クリック時に開く。`noopener noreferrer` と `referrerPolicy=no-referrer` を指定する。表示だけでは検索先に接続しない。
 
-任意のprovider base URLをclientから受け付けない。
+## AI接続の保存と診断
 
-## Logging
+設定APIはAPP_ORIGIN、Host、Origin、Sec-Fetch-Site、JSONのサイズと形式を検証する。保存するのは接続ID・モデルID・比較候補・ループバックURLだけ。キー・トークン・CLIパス・認証ディレクトリはクライアントから受け付けず、キーについて公開するのは設定の有無だけとする。
 
-許可する運用情報：
+ファイルはリポジトリ外、所有者権限600で保存する。シンボリックリンクを拒否し、version・revisionを検証してロック・CAS・原子的renameで更新する。不明な形式や破損を自動初期化しない。
 
-- request ID
-- provider ID
-- safe error code
-- 処理時間
-- token usage
-- HTTP status
+診断は利用者の操作で、保存済み設定のモデル一覧GETかClaude CLIの認証状態だけを調べる。本文・メモ・プロンプト・推論リクエストは作らない。HTTPのリダイレクトを拒否し、10秒、256KiB、最大1,000モデル、既存の回数制限を適用する。最初の一覧ページを確認するだけで、生成可否・品質・残量を保証しない。Claudeは空の一時作業ディレクトリと許可した環境変数で実行する。接続変更中に届いた診断・推論結果はrevisionで拒否する。
 
-禁止するもの：
+## PWAと同期基盤
 
-- 本文
-- 前後文脈
-- 共通プロンプト
-- 設定・背景・登場人物メモ
-- 指示
-- 候補
-- APIキー
-- providerのraw error body
-- request/response全体
+Service Workerはビルド時の静的許可リストだけをcredentialなしでキャッシュする。動的画面・API・AI応答・原稿・認証情報はキャッシュしない。原稿はIndexedDBへ保存する。オフラインではAIを送信せず、復旧しても自動再送しない。
 
-consoleへの一時debug出力も残さない。
+製品の同期接続は未設定、同期準備は初期OFFで、公開同期APIはない。HTTP transportの同一origin / HTTPS、認証済みprincipal、SQLiteのCAS・receipt・所有者分離はローカルのテスト用サーバーで検証する。テスト用セッションは製品の認証方式ではない。
 
-## XSS
+E2EE、ゼロ知識、運用TLS、実アカウントの回復・失効は未実装。ローカルの完全削除では孤立した同期データも同じトランザクションで消すが、サーバー削除へは伝播しない。後続条件は [同期ADR](roadmap/ADR_LOCAL_SYNC.md) を参照する。
 
-本文、候補、作品メモリはReactの文字列として描画する。
+## 公開SaaSへ移行する条件
 
-`dangerouslySetInnerHTML`を使用しない。
-
-LLM由来のHTML、Markdown、URLを自動実行・自動リンク化しない。
-
-Diffのins/del相当表示も、子要素はescapeされた文字列とする。
-
-import JSONはschema検証し、任意objectのdeep mergeをしない。
-
-## Browser headers
-
-AI responseはCache-Control no-store。
-
-基本headerとしてnosniff、frame embedding禁止、不要なbrowser permissionの制限を設定する。
-
-CSPは少なくともobject、base、frame ancestorを制限する。
-
-本番相当設定へ開発用unsafe-evalを持ち込まない。
-
-Task 20.4では `NODE_ENV === "development"` の場合だけscript-srcへ `unsafe-eval` を追加する。Reactの開発用デバッグ機能に必要なためであり、production・test・未設定では許可しない。[Next.js公式CSPガイド](https://nextjs.org/docs/app/guides/content-security-policy)に従う。本番buildの通常ページとoffline画面のHTTP headerでも不許可を検証する。その他のCSP、Host / Origin境界は維持する。
-
-CSPだけでXSS対策が完了したと扱わない。
-
-外部analytics、外部font、外部画像を標準で読み込まない。
-
-## Provider privacy
-
-ローカルLLMの生成はserverで検証したloopback URLの`/v1/chat/completions`へ接続する。credentials付きURL、query、fragment、LAN・公開hostを拒否し、HTTP redirectを追わない。生成payloadから接続URL・任意model IDを受け取らず、任意のクラウドURLへのfallbackも行わない。Task 16.1の設定routeだけがloopback URLとmodel IDの保存を許可し、同じserver検証を適用する。任意の認証tokenは`LOCAL_LLM_API_KEY`としてserver内だけで扱う。
-
-アプリが直接送る先はこのPCの推論サーバーであり、外部providerの同意は不要とする。ただしloopbackは推論サーバー自身による外部転送やログ保持を保証しない。ローカル実行するmodelを選択し、推論サーバーの転送・保存設定を別途確認することをUIとREADMEに示す。実LLMの同時実行・request数制限はローカルにも適用し、mockだけを除外する。
-
-OpenAI adapterでは対応APIのstore falseを使用する。
-
-これはprovider側のすべての保持がなくなる保証ではない。
-
-provider、契約、アカウント設定に応じた保持方針が適用されることをUIで説明する。
-
-外部送信同意はproviderとpolicy versionに結び付ける。
-
-同意撤回後は新規requestを禁止し、進行中requestをabortして候補を無効化する。
-
-送信済み情報をアプリ側だけで回収できるとは表示しない。
-
-## Local data
-
-IndexedDBはアプリ独自に暗号化しない。
-
-同じブラウザープロファイルや端末の利用者から秘密になるとは保証しない。
-
-バックアップには未公開原稿と作品メモリが含まれることを表示する。
-
-Task 13.1のメモは本文と同じIndexedDB・JSON backupへ保存し、暗号化・cloud同期を追加しない。AI参照はセッションごとに初期OFFで、OFFではrequestから完全に省略する。ONの場合は送信する保存済みメモを表示し、選択したproviderへの既存の外部送信同意も要求する。共通プロンプトと同様に未信頼dataとして扱い、固定制御指示へ昇格しない。ファイルシステムのAGENTS.mdや認証情報を読み込む機能は持たない。
-
-Task 14.1では項目別参照を追加し、未選択項目の内容はrequestへ含めない（canonical object内の値は空文字）。生成前の予算・送信内容・応答検証は同じ選択を使う。参照選択はbackupへ保存しない。
-
-ファイルopenはユーザーが選んだ10MiB以下のJSON / UTF-8 .txtだけを読み、新しい作品IDとして保存する。設定画面からの既存backup置換は別の保存済み作品とのID衝突を拒否する。待機中作品も平文IndexedDB内に保存し、キー・認証情報は持たない。単一writer lockとversion比較を全作品で維持する。JSON downloadは1作品分で、browserが保存先を管理する。
-
-ローカルデータ削除は確認付きで提供する。
-
-ブラウザーデータ削除、ストレージ回収、プライベートモードによる消失可能性を説明する。
-
-## Public SaaSへ移行する条件
-
-次を別途設計・承認するまで公開しない。
-
-- 認証とユーザーごとの認可
-- tenant境界
-- 利用枠と課金管理
-- 永続・分散rate limit
-- secret管理
-- データ保持と削除
-- abuse対応
-- auditと監視
-- cloud保存時の脅威分析
-- origin、proxy、deployment設定
-
-
-Task 15.1の保存履歴は本文・手入力メモを含む平文ローカルデータ。自動記録は初期OFF、手動保存は明示操作。直近50件を保持し、全削除と書き出しを提供する。Task 16.1では作品削除時に履歴もごみ箱へ移し、完全削除まで保持する。全作品backupは100MiBまでの検証済みJSONだけを扱い、復元先は新UUIDのコピーで外部送信同意をresetする。候補・APIキー・provider credential・嗜好学習は含まない。localStorageへ保存するのはtab UUIDとcaret / revisionだけで、本文やメモは含めない。
-
-## AI接続の設定と診断（Task 16.1）
-
-設定routeはAPP_ORIGINのloopback host、origin、Sec-Fetch-Siteとbounded JSONを検証する。保存するのは接続ID・model ID・比較候補・loopback URLだけ。APIキー・OAuth token・CLI実行path・認証directoryをclientから受け取らず、公開するキー情報は設定有無だけ。APIのserver opt-inと画面の初期OFFを維持する。設定fileはrepository外、owner-only 600、symlink拒否、strict version / revision検証、lock + CAS + atomic rename。未知versionや破損を自動resetしない。Unix権限を前提とするためnative Windows serverは未対応（WSLを使用）。
-
-診断は明示操作のみ、metadata GET（ChatGPT / OpenAI、Anthropic、Gemini、xAI、DeepSeek、local）またはClaude CLI auth statusに限定する。認証はserver内header／既存認証serviceで扱い、本文・メモ・プロンプトも推論requestも作らない。HTTP redirect拒否、10秒deadline、256KiB・最大1,000モデルの応答制限、provider rate limiterを適用する。最初の一覧ページだけを確認し、生成可否・残量を保証しない。Claudeは空の一時cwdとallowlist envで認証確認する。接続変更中の診断・推論結果はrevisionで拒否する。
-
-## PWAと原稿同期の検証基盤
-
-Service Workerはbuild生成の静的allowlistだけをcredentialなしでcacheする。動的通常画面、API、AI応答、原稿、認証情報をcacheしない。オフラインではAIを送信せず、復旧後も自動再送しない。cacheと原稿のIndexedDB保存を分離する。
-
-Phase 6に公開sync routeはない。本番の接続は未設定・同期準備は初期OFF。HTTP transportの同一origin/HTTPS、認証済みprincipalを要求するSQLite service、CAS/receipt/所有者分離をローカルfixtureで検証する。fixtureのsessionはテスト専用であり、製品の認証方式ではない。E2EE/ゼロ知識・運用TLS・本物のaccount回復/失効は未実装。公開前のgateは[同期ADR](roadmap/ADR_LOCAL_SYNC.md)を参照する。ローカル完全削除は孤立した同期データも同じtransactionで削除し、サーバー削除には伝播しない。
+公開運用には、認証・利用者やtenantごとの認可、課金と利用枠、永続的な分散回数制限、秘密情報管理、保持・削除、abuse対応、監査・監視、クラウド保存の脅威分析、origin・proxy・配備設定の設計と承認が必要である。
