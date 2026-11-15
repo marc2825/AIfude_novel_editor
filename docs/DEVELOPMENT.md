@@ -1,9 +1,23 @@
-# 開発と検査
+# 開発手順
 
-Node.jsは `>=24.21.0 <25`、pnpmは10.34.5を使用する。CIの再現用バージョンは `.node-version`、依存は `package.json` / `pnpm-lock.yaml` を正本とする。
+## 環境と起動
+
+Node.js `>=24.21.0 <25`、pnpm 10.34.5を使います。CIのNodeバージョンは [.node-version](../.node-version)、依存のバージョンは [package.json](../package.json) とlockfileで固定しています。
 
 ```sh
 pnpm install --frozen-lockfile
+pnpm dev
+```
+
+`http://127.0.0.1:3000` を開きます。AIなしでも編集・保存を試せます。デモ候補を使う場合は、起動前に `.env.example` を `.env.local` へコピーしてください。実AIの設定は [接続ガイド](AI_CONNECTIONS.md) を参照します。
+
+本番相当の起動は `pnpm build` の後に `pnpm start` を実行します。`pnpm launch` はビルド・起動確認・ブラウザーの表示をまとめて行います。Nodeとpnpmを起動プロセスのPATHから使えるようにしてください。
+
+URLやポートを変えるとブラウザー内の保存先も変わります。既存作品を移す場合は元のURLでバックアップを書き出します。サーバーはループバックで起動し、LANやインターネットへ公開しません。
+
+## 検査
+
+```sh
 pnpm audit
 pnpm check
 pnpm build
@@ -13,23 +27,29 @@ pnpm test:e2e:pwa
 pnpm test:e2e:sync
 ```
 
-標準E2EにはモバイルChromiumも含む。PWAはChromium / WebKit、同期はローカルfixtureを使用する。実APIキーや実原稿を自動テストへ渡さない。同じ `.next` を使うbuild・各E2Eは順番に実行する。実機IME、実モデル品質、スマホのホーム追加を自動テストの成功で代替しない。
+`check` は型検査・ESLint・Vitestを実行します。個別には `pnpm typecheck`、`pnpm lint`、`pnpm test` を使います。標準E2Eにはモバイル幅、PWAにはChromium / WebKit、同期にはローカルのテスト用サーバーを使います。
 
-`.env.example` はmockのデモ候補を使う。環境変数も保存済みAI設定もない場合はAI無効で、本文編集と保存を利用できる。主AI・比較を明示設定したときだけ実providerを使う。
+buildと各E2Eは同じ `.next` を使うため、順番に実行してください。ランチャー試験は3000番ポートを使います。原稿を保存して開発サーバーを止めるか、別の検証環境で実行します。実APIキーや実原稿は自動テストへ渡しません。実機IMEなどの手動項目は [テスト仕様](TESTING.md) にあります。
 
-## install警告
+### よくある警告
 
-`unrs-resolver` のビルドスクリプトをpnpmが無視した旨の警告が出る場合がある。既定では任意の依存スクリプトを追加許可しない。対応するnative optional packageが使われ、lintが成功していればその環境では検査できている。解決失敗時はOS / CPU向けoptional依存の導入状態を確認し、必要なスクリプトだけ個別に検討する。警告の消去を目的に一括許可しない。
+`unrs-resolver` のビルドスクリプトをpnpmが無視したという警告が出ることがあります。対応するネイティブのoptional依存が使われ、lintが通るなら、その環境では検査できています。解決に失敗する場合はOS / CPUに合うパッケージを確認し、必要なスクリプトだけを検討してください。
 
-## OpenAI APIモデルを追加する
+開発中のReactはデバッグ用にevalを使うため、開発時だけCSPで許可しています。本番では許可しません。Nextの開発用バッジは下部ボタンに重なるため非表示です。コンパイル・実行時エラーは通常どおり表示されます。
 
-APIキーで利用するOpenAIモデルは `src/domain/ai-models.ts` のallowlistで管理する。ChatGPTサブスクのアカウント別カタログとは別である。
+## 変更する前に読む文書
 
-1. 公式モデル文書と実際のアカウントで、モデルID、Responses API、Structured Output、出力上限、必要パラメーターを確認する。
-2. `src/domain/ai-models.ts` のモデル定義・IDを追加し、providerで扱えることを確認する。既存モデルIDや既定値を黙って置き換えない。
-3. モデル定義・server config・provider・契約・同意の関連テストを更新し、`pnpm check` / build / privacy E2Eを実行する。READMEの対応表も更新する。
-4. 必要なら別途、明示的に許可した実API検証を行う。自動テストで課金APIを呼ばない。
+[AGENTS.md](../AGENTS.md)、[要件](REQUIREMENTS.md)、[設計](ARCHITECTURE.md)、対象の [実装計画](IMPLEMENTATION_PLAN.md) を確認します。変更対象に応じた `skills/*/SKILL.md` を読み、完了時は [完了条件](DEFINITION_OF_DONE.md) と照合してください。設計判断は [決定記録](DECISIONS.md) に残します。
 
-## 正本と公開候補
+## OpenAI APIのモデルを追加する
 
-統合後はmainを正本とする。公開候補は `scripts/export-public.ts` で生成し、手作業で分岐させない。既定はコミット済みHEAD。未コミットの修正は明示的な `--working-tree`、新規ファイルは `--include=相対パス` で含める。新リポジトリ名は `AIfude_novel_editor`、Apache-2.0でソースを配布する。独立コピーでの検査・新しいprivateリポジトリへの移行・public切替の順序は [公開前TODO](PUBLISHING.md) に従う。内部レポート・旧プロンプトは配布から除外する。固定契約fixtureは `tests/fixtures/contracts/` にある。
+1. 公式文書と対象アカウントで、モデルID、Responses API、Structured Output、出力上限、必要パラメーターを確認します。
+2. `src/domain/ai-models.ts` に定義を追加します。既存のIDや既定モデルは勝手に置き換えません。
+3. モデル定義・設定・プロバイダー・契約・同意のテストを更新し、`pnpm check`、build、privacy E2Eを実行します。[接続ガイド](AI_CONNECTIONS.md) の対応表記も更新します。
+4. 実APIの検証は、課金を含めて許可を得た場合に行います。通常のCIには入れません。
+
+ChatGPTの利用可能モデルは、API用の一覧とは別にアカウントのカタログで確認します。
+
+## ソースを書き出す
+
+公開用コピーは `scripts/export-public.ts` で作ります。既定ではコミット済みHEADを読み、`--working-tree` で作業中の内容、`--include=相対パス` で新規ファイルを追加できます。履歴や生成物はコピーしません。実行例と公開手順は [公開準備](PUBLISHING.md) を参照してください。

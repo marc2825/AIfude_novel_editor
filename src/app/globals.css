@@ -8,7 +8,7 @@
   --paper: #fffefa;
   --surface: #f4f5f0;
   font-family: "Hiragino Sans", "Yu Gothic", "YuGothic", system-ui, sans-serif;
-  font-size: 14px;
+  font-size: 16px;
   color: var(--ink);
   background: var(--surface);
 }
@@ -27,16 +27,16 @@ a { color: var(--accent); }
 ::selection { background: #cce1d5; color: #1e3b31; }
 .home { min-height: 100vh; padding: 2rem; display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
 .workspace-header { display: flex; align-items: center; gap: 1.5rem; min-width: 0; flex: 1; }
-.workspace-header > div { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: .8rem; align-items: center; min-width: 0; }
+.workspace-header > div { display: grid; grid-template-columns: auto auto minmax(0, 1fr); column-gap: .8rem; align-items: center; min-width: 0; }
 h1 { font-size: .95rem; margin: 0; font-weight: 650; letter-spacing: .04em; }
-.status { flex: none; margin: 0; color: var(--muted); font-size: .78rem; display: flex; align-items: center; gap: .4rem; }
+.status { flex: none; margin: 0; color: var(--muted); font-size: .875rem; display: flex; align-items: center; gap: .4rem; }
 .status::before { content: ""; width: .4rem; height: .4rem; border-radius: 50%; background: currentColor; }
 
 @media (max-width: 900px) {
   .workspace-header { gap: .5rem; justify-content: space-between; width: 100%; flex-basis: 100%; }
   .workspace-header > div { grid-template-columns: minmax(0, 1fr); }
-  h1 { font-size: .85rem; }
-  .status { font-size: .8rem; max-width: 55%; overflow-wrap: anywhere; }
+  h1 { font-size: 1rem; }
+  .status { max-width: 55%; overflow-wrap: anywhere; }
   button, select, summary { min-height: 44px; }
   input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 16px; }
 }
