@@ -1,483 +1,230 @@
-# Architecture
+# アーキテクチャ
 
-Task 18.5：`context-insert`を既存の補完operationへ追加する。captureと同期Accept guardは任意位置のゼロ幅TextSelectionを必須とし、元のfrom = to・Slice・前後全文・revisionを保持する。空白／章末尾の制約はinfill / continueだけに適用する。controller・比較route・provider・文字列検証・単一Undoの適用処理は共用し、位置の再探索やReact本文コピーを追加しない。
-
-Task 18.4：`SelectionSnapshot.operation`を`insert | infill | continue`へ拡張する。infillだけは空白範囲の置換または空段落のゼロ幅TextSelection、continueは章末尾のゼロ幅TextSelectionをcaptureする。元のSlice・範囲・前後全文・revisionを保持し、Accept直前に本文条件と空段落条件を再検証する。範囲の拡張・探索・移動をしない。ゼロ幅transactionの終点検証は操作名ではなくfrom = toで判定し、prefix + candidate + suffixを照合する。通常置換の原文比上限は維持し、補完だけは既存insertと同じ3,000文字上限を使う。
-
-目標文字数はAI session入力だけに保持し、変更で旧候補を破棄する。本文やモードを保存schemaへ追加しない。既存controller・比較route・provider・応答検証を共用する。本文と周辺文脈はPM snapshot由来で、React本文コピーや自動生成loopを追加しない。
-
-Task 18.3：辞書は編集候補とは別の読み取り専用UIとする。AiEditBoundaryは既存selection snapshotをcaptureし、controllerのcommand / staleで対象の有効性を保つ。辞書ではcontroller.submit / acceptを呼ばない。DictionaryPopoverが独立した照会request ID・AbortControllerを持ち、stale・閉じる・unmount・モード変更でabortし、遅延結果を破棄する。本文のcontrolled stateや適用transactionを追加しない。
-
-専用HTTP handlerが共通guard後にDictionaryRequestを検証し、serverでprompt-onlyの内部生成要求へ変換する。providerと候補wire schemaは既存のまま共有し、辞書UIだけが説明として表示する。clientも同じ変換を使って既存response検証・deadline処理を再利用する。editor / workspaceの本文・設定・メモはHTTP要求へ渡さない。UI stateと照会結果は保存しない。
-
-Phase 12 / Task 12.1：空のTextSelectionで`operation: insert`をcaptureできる。位置・原文・prefix / suffix・revisionは従来のsnapshotに保持し、LLMへは送らない。Acceptは同じ同期検証・単一transaction境界を使用し、from = toの挿入だけを追加する。UIに本文のcontrolled valueは持たせない。
-
-比較は`POST /api/ai/comparisons`の明示した2〜3対象へ同時fan-outする。既存のserviceと候補検証をproviderごとに実行し、request IDにひも付く結果をAI sessionへ保持する。rate limiterはprovider単位。共通server provider interfaceを保ち、Claude CLI・各社APIの固有型はserver内へ閉じ込める。APIの画面opt-inはworkspace永続化と分離した初期falseの状態で、変更時に進行中AI sessionをstale化する。
-
-Task 13.1：作品メモリは`Project.storyMemory`の3つの手入力stringで管理する。`StoryMemoryPanel`のローカルdraftを明示保存し、`useWorkspace.updateStoryMemory`から既存SaveCoordinatorへ直列化する。メモ保存はPM documentやhistoryへdispatchせず、設定保存フォームからメモが省略された場合も既存値を保持する。保存失敗後の同じ値の再試行でも実際にflushし、未保存のまま成功を返さない。
-
-SelectionSnapshotへメモをコピーしてfreezeし、contextRevisionに加えて現在の3欄の値も同期Accept guardで比較する。参照ON/OFFはAI session内だけの状態で、初期OFF・新セッションでOFF。OFFではrequestから省略し、ONでは置換・挿入・比較の共通requestへ含める。
-
-必須入力予算をclientとserverで一致させるため、既存の純粋なprompt plannerを`src/features/ai-edit/prompt.ts`へ置く。`src/server/ai/prompt.ts`はserver-only再exportを維持し、providerは従来のimportを使用する。共有moduleにはReact、SDK、secret、server設定を含めない。メモはuntrusted JSON data、必須入力として扱い、予算超過ならHTTP / provider呼び出し前に拒否する。
+本文の状態はProseMirrorが管理し、Reactは操作画面を担当する。AIの返答は候補として保持し、採用時に現在の本文・選択範囲と照合してから適用する。保存用データをReactからエディタへ戻して、本文を二重管理しない。
 
 ## 1. 技術構成
 
-- Next.js App Router：画面と同一originのAPIを提供する。
-- React：周辺UI。
-- TipTap：ProseMirrorのReact統合とextension境界。
-- ProseMirror：document、selection、transaction、historyの正本。
-- CSS Modules：スタイル。
-- Floating UI：selection付近の非modal popover配置。
-- Radix UI：必要な設定dialog等に限定して利用する。
-- Zod：API、保存、importの実行時検証。
-- idb：IndexedDBの薄いラッパー。
-- diff：表示用の文字差分。
-- Vitest、Testing Library、Playwright：検証。
+Next.js App Router、React、TipTap / ProseMirror、CSS Modulesを使う。境界の検証はZod、IndexedDBはidb、差分表示はdiff、検査はVitest・Testing Library・Playwrightが担当する。
 
-Zustand、Redux、汎用DI container、ORM、vector databaseは導入しない。
+ポップオーバーは選択位置と画面の空き領域から配置する。初期案にあったFloating UI・Radix UIは未導入。依存のバージョンは `package.json` とlockfileを参照する。Zustand・Redux・汎用DI・ORM・ベクトルDBは使わない。
 
-## 2. Frontend architecture
+## 2. 画面側の構成
 
-`src/app/page.tsx`はserver側で公開可能なAI実行情報を読み、client側の`WorkspaceApp`へ渡す。
+`src/app/page.tsx` はサーバーで公開可能なAI情報を読み、`WorkspaceApp` へ渡す。公開するのは提供元・モデルID・表示名・説明・対応機能と上限・利用可否・外部送信の有無だけ。キー、サーバー環境値、SDK設定、アカウント情報は渡さない。
 
-公開可能な情報はprovider ID、model ID、表示名、短い説明、AI編集に必要なcapabilityと上限、利用可能状態、外部送信の有無だけ。APIキー、server環境値、SDK設定、account情報を渡さない。
+ChatGPTの接続状態APIは別の契約として、接続ID・状態、接続済みの場合だけ検証済みメールアドレスを返す。access / refresh / ID tokenは含めない。モデルの定義は `src/domain/ai-models.ts` に集約し、画面・設定・factoryに別々の許可リストを持たせない。
 
-ChatGPTの接続status routeは、認証情報を除く接続ID・状態と、接続済みの場合だけ検証済みemailを表示用に返す。これは上記のpage runtimeとは別の最小の接続UI契約であり、access / refresh / ID tokenを含めない。
+`WorkspaceApp` は読み込み、保存状態、編集権限、エディタ、設定、AIコントローラーを統合する。AI画面のエラーで本文エディタを破棄しないよう、描画エラーの境界を分ける。
 
-provider/model定義の正本は`src/domain/ai-models.ts`とする。React、server config、provider factoryで別々のallowlistを持たない。公開runtime情報はこのregistryと検証済みserver configから安全なfieldだけを導出する。
-
-`WorkspaceApp`は以下を統合する。
-
-- workspaceの読み込みと保存状態
-- 編集権限
-- `NovelEditor`
-- 設定画面
-- AI controller
-- `AiEditBoundary`
-
-AI UIの例外でeditorをunmountしない。AI境界をeditorと別に置く。
-
-## 3. Editor architecture
+## 3. エディタの構成
 
 ### 3.1 Schema
 
-documentはparagraphを1個以上持つ。
+documentはparagraphを1個以上持ち、paragraphはtextを持つ。現在はルビ・傍点のmarkも扱う。hardBreak、heading、list、image、linkは使わない。保存形式の拡張は [データモデル](DATA_MODEL.md#phase-4--workspacesnapshot-v6) を参照する。
 
-paragraphはtextのみを持つ。marks、hardBreak、heading、list、image、linkは導入しない。
-
-StarterKit全体は使用しない。必要なnodeとhistoryを個別に構成する。
-
-`PlainTextHistory`は`@tiptap/pm/history`のhistory pluginを1個だけ登録する。
+StarterKit全体は使わず、必要なノードと履歴だけを構成する。`PlainTextHistory` が `@tiptap/pm/history` のpluginを1つ登録する。
 
 ### 3.2 初期化
 
-IndexedDB読み込みと編集権限確認が完了してからeditorを作成する。
+IndexedDBの読み込みと編集権限の確認後にエディタを作る。SSR中は生成せず、TipTapには `immediatelyRender: false` を指定する。初期本文を渡すのは一度だけ。再描画・保存完了・候補切替でインスタンスを作り直さない。
 
-Next.jsのSSR中にeditorを生成しない。TipTapのclient initialization設定を採用版に合わせ、`immediatelyRender: false`を使用する。
-
-初期本文は一度だけ渡す。
-
-通常のReact rerender、保存完了、候補切替によってeditor instanceを作り直さない。
-
-バックアップimportは明示的な文書再読み込みであり、新しいeditor instanceとして扱う。
+通常の作品・章切替は保存したインスタンスを再利用する。バックアップ取込と履歴復元は明示的な再読み込みとして新しいインスタンスを使う。
 
 ### 3.3 正本
 
-本文の正本はPM document。
+本文の基準はPM documentである。Reactに持てるのはUI・設定・保存状態と、保存用の直近snapshot。保存用JSONを本文へ逆流させない。`setContent()` は初期化・明示的な再読み込み以外で呼ばない。
 
-Reactが保持してよいのは、保存状態、UI状態、設定、直近の保存用snapshotである。
+## 4. 状態の管理
 
-保存用JSON snapshotをeditorへ逆流させない。
+| 管理者 | 状態 |
+|---|---|
+| PM plugin | `editorInstanceId`、`contentRevision`、`selectionRevision`、現在の選択 |
+| 作品コントローラー | 設定、AIモデル設定、`contextRevision`、保存用バージョン、保存状態、編集権限 |
+| AIコントローラー | セッション、snapshot、現在のリクエストID、指示、候補数、候補一覧と選択、エラー、AbortController |
 
-`setContent()`は初期化・明示的再読み込み以外に使用しない。
+`contentRevision` は `tr.docChanged` ごとに増やす。Undo/Redoでも増え、以前の値に戻さない。`selectionRevision` は新旧selectionが等価でない場合だけ増やす。`selectionSet` だけで判定せず、追加されたトランザクションも観測する。
 
-## 4. State management
-
-状態を3系統に分ける。
-
-### Editor state
-
-PM pluginが管理する。
-
-- `editorInstanceId`
-- `contentRevision`
-- `selectionRevision`
-- 現在のselection
-
-`contentRevision`は`tr.docChanged`ごとに増加する。Undo/Redoでも増加し、過去の値へ戻さない。
-
-`selectionRevision`は新旧selectionが等価でない場合に増加する。
-
-`selectionSet`だけを変更検知の根拠にしない。
-
-pluginはappendされたtransactionも含めて観測する。
-
-### Workspace state
-
-workspace controllerが管理する。
-
-- 設定
-- workspace単位のAIモデル設定
-- `contextRevision`
-- storage version
-- 保存中・未保存・保存失敗
-- 編集権限
-
-共通プロンプト、手動文体、保存する作品メモリ、AIモデル選択、または外部送信同意の変更時に、`contextRevision`を同期的に増加させる。
-
-### AI session state
-
-AI controllerが管理する。
-
-- セッション状態
-- snapshot
-- 現在のrequest ID
-- 指示と候補数
-- 候補一覧
-- 選択中候補
-- エラー
-- AbortController
-
-documentそのものは保持しない。
-
-Reactの古いclosureをAcceptの認可情報として使用しない。Accept時はcontrollerとPM pluginの現在値を読み直す。
+共通プロンプト、手動文体、保存済みメモ、AIモデル、送信同意の変更では `contextRevision` を同期的に増やす。AI側には本文そのものを保持しない。採用時は古いReactのクロージャーを使わず、コントローラーとPM pluginの現在値を読む。
 
 ## 5. Selectionと文字列
 
 ### 5.1 座標系
 
-次の3つを混同しない。
-
-- ProseMirror位置：node境界を含むUTF-16基準の位置
-- JavaScript文字列offset：UTF-16 code unit
-- 入力上限の文字数：Unicodeコードポイント
-
-Diffの分割単位はgrapheme clusterとする。
+PM位置はノード境界を含むUTF-16基準の構造的位置、JavaScriptのoffsetはUTF-16 code unit、入力上限はUnicodeコードポイントで数える。差分の分割はgrapheme clusterとする。
 
 ### 5.2 正規テキスト
 
-各paragraphのtextをLFで結合したものを章の正規プレーンテキストとする。
-
-空paragraph、連続改行、末尾の空paragraphを保持する。
-
-文字列のtrimやUnicode正規化を行わない。
+各paragraphのtextをLFでつないだものを章のプレーンテキストとする。空段落、連続改行、末尾の空段落を保持し、trimやUnicode正規化をしない。
 
 ### 5.3 選択範囲の抽出
 
-`plain-text.ts`と`selection.ts`に変換処理を集約する。
-
-paragraph内のPM位置から、そのparagraphのtext offsetと章全体のplain-text offsetを求める。
-
-PM位置をそのままJavaScriptのsliceに渡さない。
-
-AllSelectionは、最初のparagraphのcontent開始から最後のparagraphのcontent末尾へ正規化する。
-
-元のselectionの種類・anchor・headはguard用に保持する。
-
-不正なsurrogate境界は受け付けない。選択範囲を黙って拡大・縮小しない。
+`plain-text.ts` と `selection.ts` に変換を集める。PM位置から段落内・章全体の文字列offsetを求め、PM位置をそのままJavaScriptのsliceに渡さない。AllSelectionは最初の段落のcontent開始から最後のcontent末尾へ正規化し、元の種類・anchor・headも検証用に残す。不正なsurrogate境界は拒否し、範囲を自動で広げたり縮めたりしない。
 
 ## 6. Edit snapshot
 
-Cmd/Ctrl + Kで以下を一度だけcaptureする。
+AI入力欄を開くとき、次を一度だけ取得する。
 
-- project ID、document ID、chapter ID
-- editor instance ID
-- content revision
-- selection revision
-- context revision
-- 元のPM selection
-- 正規化した`from`と`to`
-- 選択文字列
-- 選択範囲のPM Slice
-- 選択直前・直後の文脈
-- 共通プロンプトと手動文体
-- session ID
+- project / document / chapter / editor instance / sessionのID。
+- content / selection / contextのrevision。
+- 元のPM selection、正規化した `from` / `to`、選択文字列、PM Slice。
+- 選択前後の文脈、共通プロンプト、手動文体、参照する保存済みメモ。
 
-snapshotはそのセッション中、不変である。
-
-PM Slice、PM selection、位置情報はクライアント内だけに置く。providerへ送信しない。
+snapshotはセッション中に書き換えない。PMの位置・Slice・selectionはクライアント内に置き、プロバイダーへ送らない。メモはコピーして固定し、採用時には `contextRevision` に加えて現在の3欄の値も比較する。
 
 ## 7. stale policy
 
-V0.1はstrict invalidationを採用する。
+本文の変更、PM selectionの実質的な変更、再読み込み、エディタの変更、参照設定・モデル・同意・権限の変更でsnapshotを期限切れ（stale）にする。選択範囲外の編集も同じ扱い。
 
-次の変更があれば、snapshotをstaleにする。
+期限切れにしたら通信を中止し、現在のリクエストIDと採用・再試行を無効にする。候補を残す場合も採用不可と表示する。開き直して新snapshotを取得するまで有効に戻さない。元の文章や選択へ戻しても復活しない。
 
-- 選択範囲内外を問わないdocument変更
-- PM selectionの実質的変更
-- 文書再読み込み
-- editor instance変更
-- 参照設定変更
-- AIモデル選択変更
-- 同意撤回
-- 編集権限喪失
-
-stale化したら以下を行う。
-
-1. 現在のrequestをabortする。
-2. active request IDを無効化する。
-3. AcceptとRetryを無効化する。
-4. 候補を残す場合も「期限切れ・採用不可」と表示する。
-5. 新しいCmd/Ctrl + Kでのみ新snapshotを作る。
-
-一度staleになったsessionは復活させない。
-
-DOMのblur、popoverへのfocus、windowのblurだけではstaleにしない。PM selectionが変わった場合だけselection revisionを更新する。
+DOMのblur、ウィンドウのblur、AI入力欄へのフォーカス移動だけでは期限切れにしない。PM selectionが変わったかを比較する。
 
 ## 8. 非同期応答の受け入れ
 
-API応答は、次のすべてが一致した場合だけPreviewへ遷移できる。
+Generatingであり、session ID、request ID、editor instance、content / selection / context revisionが現在値と一致し、snapshotが有効で、キャンセルされていない場合だけ候補を受け入れる。
 
-- controllerがGeneratingである
-- session IDが現在のsessionと一致する
-- request IDが現在のrequestと一致する
-- editor instanceが一致する
-- content、selection、context revisionが一致する
-- snapshotがstaleでない
-- sessionがcancelされていない
+AbortControllerだけには依存しない。中止を無視して後から成功する通信や、古いエラーにも同じ照合を行う。旧応答で新しい画面を上書きしない。
 
-AbortControllerだけに依存しない。
+## 9. 採用処理の検証と適用
 
-abort後でもpromiseがresolveするmockを想定し、遅延応答を破棄する。
+### 9.1 前提条件
 
-エラー応答にも同じidentity判定を適用する。旧requestのエラーで新sessionのUIを上書きしない。
+採用は同期commandとする。候補確認中で、リクエストと候補が現在のセッションに属し、未消費、編集可能、本文・指示欄ともIME変換中でないことを確認する。
 
-## 9. Acceptの安全な実装
-
-Acceptは同期的なcommandとして実装する。
-
-### 9.1 Preconditions
-
-- Preview状態である。
-- request IDとcandidate IDが現在の候補に属する。
-- sessionが未消費である。
-- 編集権限がある。
-- editorとcommand入力欄のいずれもcomposition中でない。
-- document、instance、revisionがsnapshotと一致する。
-- 現在のselectionがcaptureしたselectionと等価である。
-- 現在の選択文字列とPM Sliceがsnapshotと一致する。
-- 候補がschemaと文字数制約を満たす。
-
-検証とdispatchの間に、fetch、hash計算のawait、保存待機、React effectを入れない。
+document、instance、各revision、PM selection、選択文字列、Sliceをsnapshotと照合し、候補の形式と文字数も再検証する。検証からdispatchまでにawait、保存待ち、React effectを挟まない。
 
 ### 9.2 置換
 
-候補文字列をLFで分割し、schemaのparagraphとtextからSliceを作る。
-
-段落内の開始・終了位置に対するopen depth 1のSliceを使用する。
-
-PMの厳密な`tr.replace()`で選択範囲を置換する。
-
-自動的に置換範囲を広げるfittingに依存しない。適合しない場合は失敗させる。
-
-HTML parser、`insertContent()`によるHTML解釈、document全体の再構築を使用しない。
+候補をLFで分割し、スキーマのparagraphとtextからopen depth 1のSliceを作る。`tr.replace()` で厳密に置換し、範囲を広げるfittingに頼らない。適合しなければ失敗とする。HTML parser、HTMLとして解釈する `insertContent()`、document全体の再構築は使わない。
 
 ### 9.3 dispatch前の不変条件検証
 
-生成したtransactionのdocumentを正規テキストへ変換する。
-
-その結果が「元のprefix + 候補文字列 + 元のsuffix」と完全一致することを確認する。
-
-不一致ならdispatchしない。
-
-これにより、段落境界の処理が選択範囲外の文字を変更することを防ぐ。
+適用予定のdocumentをプレーンテキストにし、「元のprefix + 候補 + 元のsuffix」と完全一致するか調べる。一致しなければdispatchしない。段落境界でも、選択範囲外の文字を変えないための検証である。
 
 ### 9.4 完了
 
-置換後のcaretはtransaction mappingで求めた挿入末尾へ置く。
-
-transactionにsession/request/candidateを識別する内部metaを付ける。providerからmetaを受け取らない。
-
-成功後にsessionを消費済みとし、popoverを閉じ、保存を即時予約する。
-
-同じ候補への二重クリックを2回の変更として処理しない。
+挿入末尾のカーソル位置はトランザクションのmappingで求める。session / request / candidateを識別するmetaはアプリが付け、プロバイダーから受け取らない。適用後はセッションを消費済みにし、画面を閉じて保存を即時予約する。二重クリックを2回の適用として処理しない。
 
 ## 10. Undo / Redo
 
-AI Acceptを前後の手入力と分離する。
+1. 変更トランザクションに `closeHistory()` を適用し、直前の手入力を区切る。
+2. AIの本文変更を1つのトランザクションでdispatchする。
+3. `closeHistory()` と `addToHistory: false` を付けたmetadata-onlyトランザクションをdispatchし、後続の入力も区切る。
 
-1. AI変更transactionに`closeHistory()`を適用して、直前の入力グループを閉じる。
-2. 選択範囲の置換を、1つのdocument-changing transactionとしてdispatchする。
-3. 直後に`closeHistory()`付きのmetadata-only transactionをdispatchする。
-4. 後者は`addToHistory: false`にする。
+AIの本文変更自体には `addToHistory: false` を付けない。本文変更と履歴境界を合わせて、Undoでは1操作にする。Undo/Redoも通常の変更なので他のAI候補は期限切れになるが、候補画面やAPI呼び出しは再現しない。
 
-AIの本文変更transaction自体には`addToHistory: false`を付けない。
+## 11. AI連携とAPIの境界
 
-これは「1つの本文変更＋履歴境界用transaction」であり、Undo上は1操作である。
+ブラウザーは同一originのAI APIを呼ぶ。標準編集は `POST /api/ai/edits`、比較は `POST /api/ai/comparisons`、辞書・Feedbackは専用APIを使う。処理順は以下の通り。
 
-後続の手入力がAI適用と結合しないことを必ずテストする。
+1. Origin・Host・method・Content-Type・実測サイズとスキーマを検証する。
+2. モデルを定義一覧で解決し、対応機能・接続設定・同意・回数制限を確認する。
+3. intentを決め、文脈とプロンプトを組み立てる。
+4. プロバイダーを呼び、出力を検証する。
+5. アプリが候補IDを発行し、実際の提供元・モデルIDとともに返す。
 
-Undo/Redoは通常のdocument変更なので、実行中の別AIセッションをstaleにする。
+サーバーにはブラウザーの現在のdocumentがない。位置・revisionをモデルへ渡さず、期限切れの最終判定はクライアントで行う。
 
-Undoしても候補UIを復活させない。Redo時にAPIを再実行しない。
+## 12. プロバイダーの分離
 
-## 11. LLM integrationとAPI boundary
+`EditingProvider` は解決済みモデル定義、固定編集制約、入力データ、JSON応答スキーマ、出力上限、AbortSignalを受け取る。ChatGPTは確認済みconnection IDも受ける。結果は未検証の候補と利用量、または正規化したエラー。SDK型・refusal・Structured Outputの設定はアダプター内に閉じる。
 
-ブラウザーは`POST /api/ai/edits`だけを呼ぶ。
+OpenAI APIでは共通アダプターを使い、明示モデルもサーバーの許可リストで検証する。`automatic` は既定値を使うだけで、動的な振り分けや代替モデルへの切替はしない。
 
-routeは以下を順に行う。
+`local-default` はローカルモデルの設定枠であり、能力や上限を保証する登録ではない。具体的なIDは `LOCAL_LLM_MODEL` で指定し、ループバックの `/v1/chat/completions` へ非ストリーミングで送る。接続URL・認証情報は公開しない。
 
-1. origin、host、method、content type、body sizeを検証。
-2. request schemaを検証。
-3. requestのmodel IDまたはserver defaultをcanonical registryで解決し、provider対応とcapabilityを検証。
-4. provider設定、同意、rate limitを検証。
-5. intentをサーバーで決定。
-6. contextとpromptを組み立てる。
-7. 解決済みmodel定義とともにprovider adapterを呼ぶ。
-8. 出力を検証。
-9. server生成のcandidate IDと実際に使用したprovider/model IDを付けて返す。
+ChatGPTは `chatgpt-default` と `CHATGPT_MODEL` を使い、生成前にアカウントのカタログを確認する。OAuth・認証ファイル・SSEは `src/server/ai/chatgpt/` に閉じる。接続IDはAPI照合だけに使い、プロンプトや作品保存に含めない。再認証・解除でクライアントを同期的に無効化し、サーバーでも生成前後の接続IDを照合する。
 
-providerはdocumentの位置やrevisionを知らない。
+Claude CLIと各社APIも共通の契約に従い、固有の型はサーバー外へ出さない。API利用の許可は作品の永続設定と分け、初期falseで管理する。
 
-serverにはブラウザーの現在のdocumentが存在しないため、staleの最終判定はclientで行う。
+## 13. 文脈の組み立て
 
-## 12. Provider abstraction
+`context.ts` はsnapshotの文字列と設定を受ける純粋関数とし、DOMやエディタへ触らない。資料を自動検索せず、前後本文と明示した設定・資料だけを扱う。文字数とトークン予算は [AI編集仕様](AI_EDITING.md) に従う。
 
-`EditingProvider`は以下を受け取る。
+必須入力の計算は `src/features/ai-edit/prompt.ts` で共有し、サーバー側はserver-onlyの再エクスポートを使う。共有部分にReact、SDK、秘密情報、サーバー設定を含めない。メモは未信頼のJSONデータとして必須予算に含め、超過時はAPI呼び出し前に止める。
 
-- registryで解決済みのapplication model定義
-- 固定の編集制約
-- 組み立て済み入力データ
-- JSON response schema
-- 出力token上限
-- AbortSignal
-- ChatGPTサブスク接続の場合はclientが確認したconnection ID
+## 14. 保存
 
-結果は未検証の候補データと利用量情報、または正規化したprovider error。
+IndexedDBの `workspaces` に現在の作品、`workspace-files` に待機中の作品を保存する。設定と全章を同じWorkspaceSnapshotへ含める。現行の形式・DBバージョンは [データモデル](DATA_MODEL.md) を参照する。
 
-SDK型、refusal判定、Structured Output設定はadapter内へ閉じる。application model IDと必要capabilityはprovider-neutral portを通し、OpenAI SDKの型をeditor/UIへ出さない。
-
-OpenAI adapterはすべての対応modelで同じ実装を使う。`OPENAI_MODEL`はserver defaultであり、明示的なclient overrideはserver allowlistで再検証する。`automatic`はdefaultを使うだけで、動的routingや別modelへのfallbackを行わない。
-
-ChatGPTサブスクを主な推論先とし、local、mock、API key方式のOpenAIも明示設定で利用できる。`local` adapterはサーバー設定のloopback `/v1/chat/completions`へ非streamingで接続し、同じ候補schemaを要求する。他provider用の空adapterは作らない。
-
-ローカルのapplication model ID `local-default`はサーバー設定枠であり、具体的なmodelの能力・context上限を保証する登録ではない。Settingsは`automatic`だけを利用でき、実際のmodelは検証済み`LOCAL_LLM_MODEL`で指定する。公開runtimeはmodel表示名だけを導出し、接続URL・認証tokenをclientへ渡さない。候補metadataには実際に指定したmodel IDを返す。ローカル設定変更時はserver再起動とpage reloadで新sessionを作る。Task 10.1ではworkspace schema version 2を維持した（現在はTask 13.1のversion 3）。
-
-ChatGPTも`chatgpt-default`設定枠と`CHATGPT_MODEL`を使う。個別modelのcapabilityをこの枠だけで保証せず、生成前に認証済みアカウントのcatalogを確認する。OAuth・credential file・SSEは`src/server/ai/chatgpt/`へ閉じ、clientには接続ID・接続状態・表示用emailだけを渡す。接続IDはrequestにだけ含め、LLM promptと本文保存へ含めない。再認証・解除時はcontrollerを同期的にstale化し、serverもrequest開始時と応答完了後に接続IDを照合する。
-
-## 13. Context assembly
-
-`context.ts`は純粋関数。
-
-入力はsnapshotから作った文字列と設定。editor instanceやDOMへアクセスしない。
-
-V0.1では検索をしない。前後文脈と手動設定のみを対象とする。
-
-contextの文字数制限とtoken budgetは`docs/AI_EDITING.md`を正とする。
-
-## 14. Persistence
-
-IndexedDBの`workspaces` object storeへ現在の単一workspace aggregateを保存する。Task 14.1ではdatabase version 2で`workspace-files`を追加し、待機中の作品を同じWorkspaceSnapshot形式で保持する。既存recordをupgrade時に書き換えない。
-
-章本文だけでなく、関連設定とschema versionを同じsnapshotへ含める。
-
-repositoryの操作はload、save、replace、deleteに加え、listFilesとactivateFileを提供する。activateFileは2storeを同一transactionで扱い、現在の期待ID / storageVersion、targetのschema、ID重複を検証してから原子的に退避・取出する。backup置換も待機中作品とのID衝突を拒否する。
-
-saveは同じIndexedDB readwrite transaction内でstorage versionを比較して更新する。
-
-React componentからIndexedDBを直接操作しない。
+画面からDBを直接操作せず、repositoryのload / save / replace / delete / listFiles / activateFileを使う。作品切替は同じトランザクションで、現在のIDとstorageVersion、切替先の形式、IDの重複を検証して退避・取出する。バックアップ置換でも他作品とのID衝突を拒否する。
 
 ### 保存順序
 
-- document変更時にdirty sequenceを増やす。
-- save coordinatorは書き込みを直列化する。
-- 実行中に新変更があれば、完了後に最新snapshotを保存する。
-- 保存済み表示は最新dirty sequenceまで保存された場合だけ。
-- 画面離脱時のflushはbest effortであり、完了保証とは表示しない。
+本文変更ごとにdirty sequenceを増やし、SaveCoordinatorで書き込みを直列化する。保存中に新しい変更があれば、完了後に最新snapshotを書く。最新のsequenceまで完了した場合だけ保存済みと表示する。離脱時にも保存を試みるが、終了前の完了保証はしない。
 
-### 作品ファイルと未保存メモ（Task 14.1）
+新規・読込・作品切替も直列化する。切替中だけ読み取り専用にし、現在の内容を保存する。失敗なら元のエディタで再開する。初期レコードの保存失敗後も、明示保存や切替前にはdirtyを設定して再試行する。空の保存キューを成功とみなして作品を捨てない。
 
-新規・ファイルopen・作品切替はworkspace controllerで直列化する。現在のeditorを切替中だけ読み取り専用にして保存をflushし、失敗ならそのeditorで編集を再開する。Task 15.1では成功時に現在のviewを切り替え、AI boundaryを作り直す。PM documentをReact stateから復元せず、通常保存・rerenderでsetContentしない。
+### 編集状態と未保存の入力
 
-初回作成の保存に失敗してrecordがまだない場合は、明示保存・切替前flushでdirtyを設定して実際の保存を再試行する。空の保存キューを保存成功と誤認してその作品を破棄しない。
+EditorSessionsが作品ID・章ID・epochごとにEditorを所有する。表示中のviewだけをmountし、非表示では編集とcallbackを無効にする。所有者の破棄で全Editorを終了する。遅延するTipTapのcreate通知に備え、最初のトランザクションでもreadyを1回通知する。
 
-Tiptapのcreate通知は遅延するため、NovelEditorは最初のtransactionでもreadyを1回通知し、切替直後の入力を保存対象から漏らさない。履歴pluginは1つだけ。通常の作品／章切替ではEditorSessions内のEditorを再利用し、その章のUndo / selectionを保持する。importと履歴復元では作品のeditor epochを進め、新しいEditorを使う。
+未保存の作品設定・メモ・章設定は保存済みの値と比較し、親へ同期通知する。離脱・切替・取込・削除前に破棄を確認し、キャンセルした場合は入力もAIセッションも残す。通常保存は作品設定・メモ・章設定を保存して本文をflushし、その後にAI接続設定を保存する。複数の保存を単一トランザクションとは表示しない。接続だけ失敗した場合は原稿の保存完了と区別する。
 
-StoryMemoryPanelは保存済みbaselineと入力draftを分け、変更を同期callbackでWorkspaceAppへ通知する。beforeunloadは未保存メモまたは未保存本文がある場合だけ標準確認を要求する。取込・削除・新規・切替ではdraft破棄確認が成功してからAIを無効化し、取消では既存sessionとdraftを維持する。保存操作はメモを先に検証保存してから本文をflushする。
+メモ保存はPM documentや履歴を変更しない。設定フォームにメモが省略されても保存済みの値を残す。同じ値での再試行も実際にflushする。
 
-ファイルopenは10MiB以下のcanonical JSONまたはfatal UTF-8 decodeを通る.txtだけ。新UUIDの作品としてロードし、送信同意・revision・履歴を引き継がない。ファイルdownloadとブラウザー内保存を分け、任意filesystem pathやクラウドを扱わない。閉じたタブのUUIDとcaret metadataはlocalStorageへ保存する。本文・メモ・履歴snapshotはIndexedDBが担当し、UI metadataの保存失敗で本文保存を妨げない。
+10MiB以下の作品JSONまたは厳格にUTF-8デコードしたテキストを、新しいIDで開く。送信同意・revision・履歴は引き継がない。本文やメモはIndexedDB、閉じたタブIDとカーソルはlocalStorageに分け、UI状態の保存失敗で本文保存を妨げない。
 
 ### 別タブ
 
-Web Locksでorigin内のworkspace編集権限を1タブに限定する。
+Web Lock `novel-editor:workspace` を取れた1タブだけが編集・AI生成できる。取れない場合と非対応環境は読み取り専用とし、localStorage leaseへ切り替えない。IndexedDBのバージョン比較も二重防御として残す。
 
-lock名は`novel-editor:workspace`。
+## 15. 同時編集
 
-取得できないタブは読み取り専用。AI生成も無効化する。
-
-Web Locks非対応環境では永続workspaceを編集可能にしない。安全でないlocalStorage leaseへ自動fallbackしない。
-
-IndexedDBのversion比較は二重防御として維持する。
-
-## 15. Concurrent editing
-
-共同編集、remote merge、CRDTは対象外。
-
-別タブの同時書き込みは拒否する。
-
-文書位置のrebase、mappingによるAI候補の追従、変更箇所探索は実装しない。
+共同編集・CRDT・remote mergeは対象外。別タブの書き込みは拒否する。古いAI候補の位置をmapping・検索・rebaseで追従させない。
 
 ## 16. Diff
 
-Diffは表示専用。
-
-- 原文と候補を`Intl.Segmenter`でgrapheme単位に分ける。
-- `diff`をWeb Worker内で実行する。
-- active候補だけ計算する。
-- 150msでworkerを終了し、原文・候補の並列表現へfallbackする。
-- worker応答もrequest IDとcandidate IDで照合する。
-
-Diffの結果をAccept時のpatchとして使用しない。
+`Intl.Segmenter` でgrapheme単位に分割し、選択中の候補だけWeb Workerでdiffを計算する。150msで打ち切り、原文と候補を並べて表示する。応答はrequest ID・candidate IDで照合する。表示用の差分を実行可能patchとして使わず、部分採用も最終的な置換文字列を検証してから適用する。
 
 ## 17. Retry / cancellation / streaming
 
-Retryは新しいrequest IDを発行する。
+再試行は新しいrequest IDを発行する。キャンセルは画面をすぐ閉じ、通信の停止も要求するが、提供元の処理・課金停止は保証しない。
 
-旧候補はRetry開始時に利用不能にする。
+ブラウザーへ候補をストリーミングしない。ChatGPTだけは承認された例外としてサーバー内でHTTP/SSEを受信し、`response.completed` と全候補の検証が完了してから返す。途中の失敗や受信上限超過では候補を捨てる。
 
-キャンセルはclient状態を即座に閉じ、通信停止はbest effortで行う。
+## 18. エラーの隔離
 
-provider側の処理・課金の停止を保証しない。
+| 失敗 | 扱い |
+|---|---|
+| AIの描画・通信 | AI領域で通知し、本文編集と保存を続ける |
+| 保存 | メモリ上の本文を残し、未保存表示と書き出しを提供する |
+| 初期読み込み | 空の本文で上書きしない |
+| エディタの致命的エラー | 直近のメモリ・保存済みsnapshotから復旧する手段を示す |
 
-ブラウザーへの候補streamingは使用しない。完全な返答の検証が終わるまで候補を表示しない。2026-10-14のユーザー承認に基づき、ChatGPTサブスクのserver adapter内だけHTTP/SSEを受信する。`response.completed`前、途中の失敗、受信上限超過では候補を返さない。
+失敗を握りつぶして成功や保存済みと表示しない。
 
-## 18. Error boundaries
+## 19. セキュリティ
 
-- AI描画エラー：AI領域だけ停止。
-- APIエラー：本文不変、保存継続。
-- 保存エラー：メモリ本文維持、未保存表示、書き出し提供。
-- 初期読み込みエラー：空文書で自動上書きしない。
-- editor致命的エラー：直近メモリsnapshotと保存済みsnapshotの復旧手段を表示。
+[セキュリティ仕様](SECURITY.md) に従う。サーバー専用モジュールに `server-only` を付け、lintとbuildで境界を検査する。本文・候補・説明・共通プロンプトは未信頼の文字列として扱う。
 
-例外を握りつぶして「成功」「保存済み」と表示しない。
+## 章・履歴・検索
 
-## 19. Security
+現在章の本文はPM document、他章は保存snapshotから読む。章切替は現在本文をflushし、CASで保存してからviewを切り替える。文字数は現在章のPM documentと他章の保存本文から数え、改行を除き空白を含むコードポイント数だけをUIへ渡す。
 
-`docs/SECURITY.md`を適用する。
+検索は現在章のliteral文字列、最大500コードポイント、大小文字の指定あり、最大10,000一致。置換は最大3,000コードポイントで空文字も許可する。確認後にidentity・contentRevision・doc.eq・editable・compositionを同期検証し、逆順のreplaceを1トランザクションにまとめて履歴を区切る。本文変更後は再検索する。
 
-server専用moduleには`server-only`を使用する。
+履歴復元と一括取り込みは原子的に行い、同期的なリクエスト作成失敗でも中止する。自動履歴は本文保存後の別トランザクションなので、その容量不足で本文の保存成功を取り消さない。一括書き出しは単一readonlyトランザクションで読む。
 
-clientからserver moduleへのimportをlintとbuildで禁止する。
+ごみ箱への移動も、最新本文・履歴の退避と削除を同じトランザクションで行う。復元・完全削除はWeb LockとCASの下で実行する。作品は保存済み一覧へ追加し、削除済みの状態なら復元作品を開く。章は新IDで追加し、現在章を上書きしない。破棄したEditorや候補を復活させない。
 
-候補、本文、説明、共通プロンプトはすべて未信頼文字列として扱う。
+## 接続設定と診断
 
+クライアントとの契約はdomain、画面と通信はfeatures/ai-edit、ファイル保存と診断はserver/ai、HTTPの検証はserver/httpに置く。環境設定に保存済み設定を重ね、全APIで同じrevisionを解決する。`x-novel-ai-settings-revision` を推論前後に照合し、途中の変更を拒否する。破損時はAIだけを止める。
 
-### 章・履歴・検索（Task 15.1）
+画面操作とBroadcastChannelからの変更通知でAIセッションを無効にし、実行情報を再読込する。他タブの変更でも入力中の接続設定は残すが、古いrevisionで保存できないようにする。診断はrequest ID・revision・modeを照合し、取消後の応答を捨てる。設定読み込みのGETは外部通信を行わない。
 
-active chapterの正本はPM document。保存snapshotのchapterは現在章、additionalChaptersは非表示章。章切替前にactive PM本文をflushし、章の更新をCAS保存してからviewを変更する。EditorSessionsは作品ID・章ID・epochで実Editorを所有し、Reactはactive viewだけをmountする。非表示editorはeditable:falseとcallback解除。候補は再利用せず、同じEditorへ戻っても旧AI sessionは復活しない。owner破棄で全Editorをdestroyする。
+## 操作別の補足
 
-手動の章タイトル／アウトラインdraftも未保存警告と明示保存の対象。文字数はactive PM documentのコードポイント数と非active章の保存bodyから数値だけをUIへ渡す。改行を除き空白を含む。目標設定は作品単位で保存する。
+| 操作 | 取得・検証する範囲 |
+|---|---|
+| `insert` | 空のTextSelection。元の位置、prefix / suffix、Slice、revisionを保持する |
+| `context-insert` | 任意位置のゼロ幅TextSelection。元の本文を残す |
+| `infill` | 前後に本文のある空白範囲、または途中の空段落 |
+| `continue` | 現在章の末尾のゼロ幅TextSelection |
 
-検索は現在章のliteral文字列、最大500コードポイント、case指定あり、最大10,000一致。UTF-16 plain text offsetをparagraph境界に沿ってPM位置へ変換する。置換は最大3,000コードポイント、空文字可。明示確認後にeditor identity・contentRevision・doc.eq・editable・compositionを同期検証し、逆順のreplaceを1transactionへまとめる。前後のcloseHistoryで単一Undoにする。本文変更後の検索snapshotは再利用しない。
+補完は採用直前に空白・空段落・章末尾の条件を再検証する。範囲を探索・移動しない。ゼロ幅置換の終点検証は操作名でなくfrom = toで判定する。補完の上限は挿入と同じ3,000文字、通常置換の原文比上限は維持する。目標文字数はAIセッション内だけに持ち、変更で旧候補を捨てる。
 
-保存履歴の記録と一括backupは専用の具体repositoryで扱う。履歴復元と一括importは原子的transactionで、同期的なrequest作成失敗でもabortする。自動履歴は本文save後の別transactionなので、quota失敗で本文saveを失敗に変えない。全作品exportは単一readonly transactionで整合したsnapshotを読み、一括importはコピー追加を原子的に行う。
+辞書は独立した照会request IDとAbortControllerを持つ。既存snapshotで対象を監視するが、編集コントローラーのsubmit / acceptは呼ばない。閉じる・期限切れ・破棄・モード変更で中止し、結果や画面状態を保存しない。サーバーは固定の辞書指示を内部生成要求へ変換し、既存プロバイダーと候補検証を共用する。本文・設定・メモは渡さない。
 
-### 未保存保護・ごみ箱・接続管理（Task 16.1）
-
-作品設定のdraftは成功した保存baselineと比較する。親へdirtyを同期通知し、beforeunloadと作品切替・単体import・削除の破棄確認へ統合する。取消ではAI controllerに触れない。通常保存は作品設定・メモ・章設定を順次保存して本文をflushし、その後で接続設定を保存する。AI設定の保存失敗でも本文の保存は完了し、未保存の接続draftを残して部分的な成功を通知する。複数の保存を単一transactionと表示しない。AI接続画面の描画エラーも専用boundaryで隔離する。
-
-作品削除は最新のPM snapshotと保存履歴をworkspace-trashへ退避し、activeとhistoryの削除を同じtransactionで行う。章削除もtrash追加とworkspace更新を同時に行う。復元・完全削除はWeb LockとCASの下だけで実行する。作品復元はarchiveへ追加し、現在作品を上書きしない。削除済み状態からは復元作品をactivateする。章復元では現在章を維持して新IDの章を追加する。破棄済みEditorや古い候補を復活させない。
-
-AI接続設定のclient契約はdomain、UIとtransportはfeatures/ai-edit、file storeと診断はserver/ai、HTTP guardはserver/httpへ分離する。サーバーの環境設定へ検証済みの保存設定を重ね、各routeで同じrevisionを解決する。clientは`x-novel-ai-settings-revision`を送り、serverは推論前後に照合する。設定変更中の応答は採用できない。破損設定はAIだけ停止し、自動fallbackしない。
-
-画面内の変更とBroadcastChannelによる別タブ変更は進行中AIを無効化し、runtimeを再読込する。別タブ変更時も未保存接続draftは保持するが、旧revisionによる保存は拒否する。診断はrequest ID・revision・modeを照合し、取消後の遅延応答を破棄する。GETでの設定読込自体は外部通信を行わない。
+比較は同じ入力を2〜3接続へ並列に送り、提供元ごとの検証済み結果を同じrequest IDへまとめる。回数制限はプロバイダーごとに共有し、型・SDK・認証は共通契約の内側へ閉じる。

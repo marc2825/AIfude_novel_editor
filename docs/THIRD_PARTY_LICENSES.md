@@ -74,7 +74,7 @@
 
 ## 同梱素材
 
-`public/icons/source.svg` は図形だけのSVGで、外部URL参照・埋め込み画像・フォントを含まない。3つのPNGは `scripts/build-icons.mjs` に同SVGからの生成手順がある。Git上の追加経緯と生成コードは確認したが、素材の権利・出所について所有者による最終確認は公開前TODOとして残す。第三者の画像・フォント・CLI binaryを追加同梱していない。
+`public/icons/source.svg` は図形だけのSVGで、外部URL参照・埋め込み画像・フォントを含まない。3つのPNGは `scripts/build-icons.mjs` に同SVGからの生成手順がある。Git上の追加経緯と生成コードは確認したが、素材の権利・出所について所有者による最終確認は公開前TODOとして残す。第三者の画像・フォント・CLI バイナリーを追加同梱していない。
 
 ## 再確認
 

@@ -1,25 +1,25 @@
-# Phase 4: 創作支援と日本語組版
+# Phase 4：日本語組版と創作支援
 
-2026-10-27。対象A-03/06、T-01〜04。変更予定はdomain workspace/typography、editor schema/初期化/注釈transaction、創作ツールUI、組版panel/exportと対応テスト。
+2026-10-27の設計。対象はA-03/06、T-01〜04。保存形式、注釈の編集、出力、創作ツールを扱う。
 
 ## 保存と編集
 
-Workspace v6で、paragraph内のtext配列とruby/emphasis markを許可する。rubyはreadingと元のbase文字列を属性に保持し、傍点とルビは重ねない。v1〜v5は元のplain schemaで厳密に検証後、文字/ID/改行を変えずv6へ移行。DB versionは4。旧アプリはfuture versionとして拒否する。markup風の既存文字列を自動解析・変換しない。
+Workspace v6でparagraph内のtext配列と `ruby` / `emphasis` markを許可する。ルビは `reading` と元の親文字 `base` を保持し、傍点とは重ねない。旧v1〜v5は元のスキーマで検証し、文字・ID・改行を変えず移行する。DBはv4のまま。記法に見える既存の文字列を自動変換しない。
 
-初期化だけで構造化PM documentを渡し、保存/rerender時のsetContentは禁止。横書きは正本のまま、ルビ範囲は印付き表示。縦書きreaderはRuby/rtと傍点を安全なReact要素で表示する。読みの文字は本文文字数/LLM payload/selection座標へ混ぜない。
+構造化本文を渡すのは初期化時だけ。保存や再描画で `setContent()` を使わない。横書きは注釈の印を示し、縦書きの閲覧画面ではReact要素としてルビ・傍点を描画する。読みの文字は本文文字数・LLM入力・選択座標へ混ぜない。
 
-注釈の明示適用・解除は既存snapshotの同期検証後、1 history単位。AI/検索の文字置換が注釈を黙って消さないよう、注釈を含む対象は拒否して解除・再付与を案内。通常の手入力は続行し、rubyの元baseと現在の親文字が違う場合もreadingを失わず保持するが、投稿用exportは確認・再付与するまで拒否する。範囲外のmarkを保持する。IME中の適用を拒否する。
+注釈の付与・解除もsnapshotの同期検証を通し、1回のUndoにまとめる。注釈を含む範囲はAI・検索の文字置換を拒否して、解除と再付与を案内する。範囲外のmarkは保持し、IME変換中は適用しない。
+
+手入力で親文字が変わっても読みは捨てない。ただし、元の `base` と一致しないルビは確認・再付与するまで投稿用出力を拒否する。
 
 ## 出力
 
-JSONは完全復元用。plain txtは本文文字だけという既存契約を保持。投稿用はカクヨム/なろうの明示ルビ記法を生成し、サイト別上限・予約記号・未対応表現を事前検証する。根拠のないエスケープや切り捨てをせず、変換を拒否して理由を示す。章は個別出力と章見出し付き全章出力を区別し、投稿先への自動送信は行わない。
+完全復元にはJSON、本文だけにはプレーンテキストを使う。投稿用はカクヨム・なろうの記法に変換し、上限・予約記号・未対応表現を先に検証する。根拠のないエスケープや切り捨てはせず、理由を示して拒否する。章単位と章見出し付きの全章出力を分け、投稿先へ自動送信しない。
 
-公式資料（2026-10-27）: [カクヨム](https://kakuyomu.jp/help/entry/notation)は親文字20/読み50、ルビと傍点は併用不可。[なろうルビ](https://syosetu.com/helpcenter/helppage/helppageid/42)は親文字10/読み10。[なろう傍点](https://syosetu.com/helpcenter/helppage/helppageid/43/)は記法詳細がこの資料だけでは確定できないため、明示ルビの点による代替を別表示するか出力拒否とし、ネイティブ対応を主張しない。サイト記法の完全parserではなく、このアプリが出力する安全な範囲だけをround-trip検証する。
+2026-10-27に確認した公式資料では、[カクヨム](https://kakuyomu.jp/help/entry/notation) は親文字20・読み50文字、ルビと傍点の併用不可。[なろうルビ](https://syosetu.com/helpcenter/helppage/helppageid/42) は親文字10・読み10文字。[なろう傍点](https://syosetu.com/helpcenter/helppage/helppageid/43/) は資料だけでは記法を確定できないため、点のルビによる代用を明示するか出力を拒否する。検証対象はアプリが出力する範囲であり、投稿先の完全な構文解析ではない。
 
-## 創作支援
+## 創作支援と検査
 
-Describe/Guided Writeは既存context-insert（手動カーソル位置・前後文脈・明示採用）の入口とする。五感/比喩/内面、次の展開、長さ、追加事実の許可を指示欄で確認し、2案以上で比較する。送信・再送信・採用は明示操作。LLMの出力座標や実行可能patchは使わない。保持条件は指示であり意味を機械保証しない。
+「五感の描写」「展開を指定」は既存の `context-insert` を使う。五感・比喩・内面、次の展開、長さ、新しい事実の許可を確認し、2案以上を比較する。送信・再送・採用は利用者が操作する。座標やpatchをモデルに作らせず、意味保持を機械的に保証した表示もしない。
 
-## 検証設計
-
-先に旧v1〜v5 migration/JSON backup/保存reload、markと本文/改行のproperty round-trip、注釈guard/stale/IME/Undo/Redo/範囲外mark、AIと検索の注釈保護を検証する。続いてcomponentの確認操作、E2Eのルビ作成→reload→export→復元、縦書きで本文不変、Describe/Guided Writeの2候補/明示採用/Undo、既存全回帰、type/lint/build。実機縦書き・日本語IME・投稿先表示・実LLM品質はNOT RUN。
+旧形式の移行、JSON復元、保存・再読み込み、markと文字の保持、期限切れ・IME・Undo/Redo、AIと検索による注釈保護を検査する。画面では注釈作成から出力・復元、縦書きでの本文不変、創作候補の比較・採用を確認する。実機の縦書き・IME・投稿先表示・実モデル品質は未確認。

@@ -1,65 +1,39 @@
-# ChatGPTサブスク連携の変更案
+# ChatGPT連携で変更した設計
 
-状態：2026-10-14に承認済み。まずChatGPTから対応し、他providerへの自動切替を行わない。Phase 11 / Task 11.1として実装する。
+2026-10-14に承認したTask 11.1の記録。連携は実装済みで、ここには導入時の判断を残す。現行の設定は [接続ガイド](AI_CONNECTIONS.md)、利用条件の残件は [配布前の確認](PROVIDER_DISTRIBUTION_REVIEW.md) を参照する。
 
-## 目的と対象
+## 目的
 
-ローカルLLMに代わる主な推論先として、ChatGPTの契約済み利用枠を使う。最初の対象はChatGPT Plus / Proとする。他社のサブスク対応は、そのサービスの公式認証・推論仕様を確認した個別Taskとする。
+ローカルアプリから、利用者のChatGPTの利用枠で推敲できるようにする。最初の対象はPlus / Pro。APIキー方式とは認証・利用枠が異なり、モデルの利用可否はアカウントの認証結果で確認する。
 
-OpenAI公式ガイドは、ローカルで動く個人用アプリもSign in with ChatGPTのplan usageの対象として説明している。API keyを使う既存のOpenAI providerとは認証・利用枠が異なる。アカウントの利用可否・モデル・残量は実際の認証結果で確認する。
+参照：[公式Cookbook](https://developers.openai.com/cookbook/articles/sign-in-with-chatgpt)、[plan usage](https://developers.openai.com/siwc/token-sharing-open-source)。
 
-参照：[公式Cookbook](https://developers.openai.com/cookbook/articles/sign-in-with-chatgpt)、[plan usage概要](https://developers.openai.com/siwc/token-sharing-open-source)。
+## 変更した仕様
 
-## 既存仕様との衝突と提案
+| 従来 | ChatGPT連携での扱い |
+|---|---|
+| 完全な応答を受け取る非ストリーミング方式 | 必須の `stream: true` に対応するため、サーバー内でSSEを受ける。完了と候補の検証後にJSONを返し、途中結果は画面に出さない |
+| `max_output_tokens` で出力を制限 | このフィールドは未対応。時間・受信量・候補数・文字数で制限し、上限到達時は中止して途中出力を捨てる |
+| APIキーをサーバー環境変数で管理 | OAuthのトークンとhost IDは、リポジトリ外の保護したファイルで管理する |
 
-| 現在の仕様 | 公式サブスク接続の条件 | 変更案 |
-|---|---|---|
-| 非streamingで完全な応答を受信する | HTTPの推論requestは`stream: true`が必須 | server adapter内だけSSEを受信し、正常な完了イベントと全候補の検証後に、既存のJSON API responseを返す。画面へ途中の候補を流さない。 |
-| providerへ`max_output_tokens`を指定する | このフィールドは未対応 | この接続だけtoken数の固定上限を保証しない。時間、実測受信量、候補数・候補文字数を制限する。上限到達時はabortし、途中の出力を採用しない。 |
-| server用API keyは環境変数だけに置く | OAuthのaccess / refresh tokenとhost IDの管理が必要 | 認証情報はserver専用の保護されたlocal storageへ保存する。本文のIndexedDB、workspace JSON、browser storage、client bundleへ渡さない。 |
+D-010の例外として、サーバー内のストリーム受信と固定出力トークン上限を使わない方式が承認された。サブスクリプションでも利用は無制限ではなく、中止で使用量が戻る保証もない。利用枠不足や接続失敗で別のAIへ切り替えない。
 
-サブスク利用は無制限を意味しない。送信済み処理の停止・使用量の回収を保証しない。利用枠不足、認証失効、接続失敗で従量課金APIへ自動切替しない。
+参照：[プレビュー制限](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)、[推論と完了判定](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference)。
 
-この変更はD-010とAI_EDITINGのprovider契約に関係する。ユーザーからserver内のstream受信と、固定出力token上限を使わない方式への変更の承認を得た。
+## 認証から生成まで
 
-参照：[previewのAPI制限](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)、[推論と完了判定](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference)。
+1. 利用者が「Continue with ChatGPT」を押す。サーバーでhost ID、state、nonce、PKCEを用意する。
+2. 公式フローで認証し、ループバックcallbackでstateとclient IDを確認してcodeを交換する。ID tokenの署名・issuer・audience・期限・nonce・必要scopeを検証する。
+3. 単一アカウントの接続を保存する。再認証・refresh・解除で既存のAIセッションを無効にする。
+4. アカウントのモデルカタログを確認し、本文の外部送信に同意を得て生成する。認証だけでは本文を送らない。
+5. `response.completed` を受け、候補検証とリクエストID照合が通った結果だけを返す。古い結果や利用枠エラーの途中出力は捨てる。
 
-## 接続設計
-
-1. 設定画面からユーザー操作で「Continue with ChatGPT」を実行する。アプリ自身のログイン・ユーザー管理機能は追加しない。
-2. serverでhost ID、試行ごとのstate / nonce / PKCEを用意する。OpenAIへの認証URLを生成し、本文を認証URLへ含めない。
-3. `127.0.0.1`のcallbackでstateと発行client IDを確認し、codeをserver内で交換する。ID tokenの署名・issuer・audience・期限・nonceと、plan usage用scopeを検証する。
-4. 最小の単一アカウント接続を保存する。再認証・refresh・接続解除を用意し、接続変更で既存のAI sessionを無効化する。
-5. 認証されたアカウントのmodel catalogで、使用modelが利用可能かserver側で確認する。既存のAPI用model一覧をサブスクの利用可能一覧とみなさない。
-6. 外部送信の表示と明示同意を経て、選択範囲と既存のbounded contextだけを送る。認証の成功だけで本文送信を開始しない。
-7. Responsesの`response.completed`を受信した場合だけ、通常のschema / business validation、request ID照合、stale、Previewへ進む。usage制限の失敗が途中で届いた場合は候補を破棄する。
-
-cookie転用、非公開のChatGPT endpoint、既存Codexの認証情報の流用は用いない。
+独自ログイン、cookieの転用、非公開endpoint、既存Codexの認証情報は使わない。トークンはブラウザー、本文のIndexedDB、バックアップ、ログへ渡さない。
 
 参照：[登録と認証](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)、[アカウントとセッション](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions)。
 
-## 実装時に変更する範囲
+## 導入時の検査条件
 
-- server：ChatGPT OAuth、認証情報保存、subscription provider、HTTP認証route、既存config / factory / service。
-- domain / UI：接続表示、外部送信同意、runtime / model解決、認証変更時のsession無効化。
-- 設定と文書：サブスクを主な接続とする設定例、起動・認証手順、Implementation Planの新Task、関連仕様とDecision。
-- テスト：認証とproviderのunit / integration、接続・解除のcomponent、中心UXのE2E。
+不正な認証、権限不足、同意前の送信、上限超過、拒否、不正JSON、未完了を拒否する。中止を無視した遅延応答や認証変更後の応答も捨てる。採用以外で本文を変えず、範囲置換・Undo/Redo・保存を維持する。
 
-## 提案するAcceptance Criteria
-
-- API keyなしで、公式のChatGPT認証を開始・完了・再認証・解除できる。
-- tokenをclientや本文バックアップへ出さず、不正state・不正ID token・権限不足を拒否する。
-- アカウントに許可されたmodelだけを使用し、API providerとの利用枠の違いを表示する。
-- 同意前の本文送信は0回。利用枠不足・接続失敗で別providerを呼ばない。
-- server内の途中応答はUIへ表示せず、受信上限・時間切れ・不正JSON・拒否・未完了を正常な失敗として扱う。
-- abortを無視する遅延応答と、認証切替後の古い応答を破棄する。
-- Accept以外で本文を変更せず、範囲置換、stale、Undo/Redo、編集と保存を維持する。
-- typecheck、lint、関連Vitest、build、E2Eを実行する。実際のサブスク認証・実推論・OSのIMEの未検証を区別する。
-
-## 承認事項
-
-- 複数providerを希望するが、今回のTaskではChatGPTから対応する。
-- server内のstream受信と、API側の固定出力token上限を使わない方式への仕様変更。
-- 利用枠不足・認証失効・接続失敗で別providerへ自動切替しない。
-
-本文保存schemaとeditor mutationは変更しない。他社サブスクの未使用adapterを先行実装しない。
+認証・プロバイダー・接続画面のunit / integration / componentテスト、型・lint・build・E2Eで確認する。実サブスクリプションの認証・生成と実機IMEは別に記録する。本文の保存形式は変えず、他社の未使用アダプターは先行実装しない。

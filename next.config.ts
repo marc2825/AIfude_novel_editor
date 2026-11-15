@@ -10,13 +10,14 @@ const contentSecurityPolicy = [
   "frame-src 'none'",
   "img-src 'self' data:",
   "object-src 'none'",
-  "script-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "worker-src 'self' blob:",
 ].join("; ");
 
 const nextConfig: NextConfig = {
   agentRules: false,
+  devIndicators: false,
   images: { unoptimized: true },
   experimental: {
     useTypeScriptCli: false,

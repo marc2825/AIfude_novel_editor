@@ -80,7 +80,7 @@
 
 .eyebrow {
   color: var(--accent);
-  font-size: 0.75rem;
+  font-size: .875rem;
 }
 
 .closeButton {
@@ -120,7 +120,7 @@
   justify-content: space-between;
   gap: 0.75rem;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: .875rem;
 }
 
 .inputMeta output {
@@ -141,7 +141,7 @@
 .resultMessage {
   padding: 0.65rem 0.75rem;
   border-radius: 0.5rem;
-  font-size: 0.82rem;
+  font-size: .875rem;
 }
 
 .validationMessage,
@@ -174,7 +174,7 @@
 
 .controlGroup legend {
   padding: 0;
-  font-size: 0.82rem;
+  font-size: .875rem;
   font-weight: 700;
 }
 
@@ -205,7 +205,7 @@
 
 .contextDetails {
   color: var(--ink);
-  font-size: 0.8rem;
+  font-size: .875rem;
 }
 
 .contextDetails summary {
@@ -245,7 +245,7 @@
   background: #f5f7f2;
   border: 1px solid var(--line);
   border-radius: 0.6rem;
-  font-size: 0.82rem;
+  font-size: .875rem;
 }
 
 .consentPanel h3,
@@ -334,7 +334,7 @@
 .candidateSummary {
   margin: 0;
   color: #31533f;
-  font-size: 0.82rem;
+  font-size: .875rem;
 }
 
 .candidateHeading {
@@ -358,7 +358,7 @@
 .candidateHeading p,
 .providerLabel {
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: .875rem;
 }
 
 .providerLabel {
@@ -374,7 +374,7 @@
 
 .candidateTabs button {
   flex: 1 1 auto;
-  font-size: .78rem;
+  font-size: .875rem;
 }
 
 .candidateTabs button[aria-selected="true"] {
@@ -397,7 +397,7 @@
 
 .candidatePanel h4 {
   color: var(--ink);
-  font-size: 0.78rem;
+  font-size: .875rem;
 }
 
 .candidateText {
@@ -433,14 +433,14 @@
 
 .diffPreview h5 {
   color: var(--ink);
-  font-size: 0.75rem;
+  font-size: .875rem;
 }
 
 .diffStatus,
 .diffFallbackMessage,
 .diffLegend {
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: .875rem;
 }
 
 .diffLegend {
@@ -610,25 +610,25 @@
 .popoverBody { overflow: auto; min-height: 0; padding: 1rem 1.2rem; display: grid; gap: 1rem; }
 .commandSettings { display: grid; gap: .85rem; }
 .originalSelection { padding: .8rem 1rem; border-left: 3px solid #a8bcae; background: #f3f5ee; border-radius: 0 .4rem .4rem 0; }
-.originalSelection > div { display: flex; justify-content: space-between; font-size: .75rem; color: var(--muted); }
+.originalSelection > div { display: flex; justify-content: space-between; font-size: .875rem; color: var(--muted); }
 .originalSelection p { margin: .5rem 0 0; max-height: 7rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 1.05rem/1.9 "Yu Mincho", "Hiragino Mincho ProN", serif; }
 .quickInstructions { display: flex; gap: .4rem; flex-wrap: wrap; }
-.quickInstructions button { color: var(--muted); font-size: .78rem; }
+.quickInstructions button { color: var(--muted); font-size: .875rem; }
 .popover .primaryButton { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 650; padding-inline: 1.5rem; }
 .popover .primaryButton:hover:not(:disabled) { background: #244e43; }
-.editSettingsButton { justify-self: start; background: transparent; color: var(--muted); font-size: .78rem; }
-.cardHeading h4 { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-size: .85rem; margin: 0; }
-.cardHeading h4 span { font-size: .75rem; color: var(--muted); font-weight: 400; }
-.cardHeading p { margin: .2rem 0 0; font-size: .7rem; color: var(--muted); overflow-wrap: anywhere; }
+.editSettingsButton { justify-self: start; background: transparent; color: var(--muted); font-size: .875rem; }
+.cardHeading h4 { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-size: .875rem; margin: 0; }
+.cardHeading h4 span { font-size: .875rem; color: var(--muted); font-weight: 400; }
+.cardHeading p { margin: .2rem 0 0; font-size: .875rem; color: var(--muted); overflow-wrap: anywhere; }
 .comparisonGrid article[data-selected="true"] { border-color: var(--accent); box-shadow: inset 0 2px var(--accent); }
 .comparisonGrid .candidateText { padding: 0; background: transparent; border: 0; margin: .3rem 0; }
-.comparisonGrid button { width: 100%; font-size: .75rem; color: var(--accent); }
+.comparisonGrid button { width: 100%; font-size: .875rem; color: var(--accent); }
 .comparisonGrid button[aria-pressed="true"] { background: var(--accent-soft); border-color: #aac1b3; }
-.lengthDelta { margin: 0; color: var(--muted); font-size: .72rem; }
+.lengthDelta { margin: 0; color: var(--muted); font-size: .875rem; }
 .reviewColumns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .candidatePanel > .reviewColumns { display: grid; gap: 1rem; }
 .reviewColumns > div { min-width: 0; display: grid; align-content: start; gap: .4rem; }
-.reviewHint { color: var(--muted); font-size: .75rem; margin: 0; }
+.reviewHint { color: var(--muted); font-size: .875rem; margin: 0; }
 @media (max-width: 42rem) {
   .reviewColumns { grid-template-columns: 1fr; }
   .popoverBody { padding: .8rem; }
@@ -659,7 +659,7 @@
 
 .headingActions { display: flex; gap: .35rem; flex-shrink: 0; }
 .returnToEditor { display: none; }
-.resumeSession { position: fixed; right: max(8px, env(safe-area-inset-right)); bottom: calc(82px + env(safe-area-inset-bottom)); z-index: 20; display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; max-width: calc(100vw - max(8px, env(safe-area-inset-left)) - max(8px, env(safe-area-inset-right))); padding: .5rem; border: 1px solid var(--line); border-radius: .65rem; background: var(--paper); box-shadow: 0 4px 20px #293b3729; font-size: .8rem; }
+.resumeSession { position: fixed; right: max(8px, env(safe-area-inset-right)); bottom: calc(82px + env(safe-area-inset-bottom)); z-index: 20; display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; max-width: calc(100vw - max(8px, env(safe-area-inset-left)) - max(8px, env(safe-area-inset-right))); padding: .5rem; border: 1px solid var(--line); border-radius: .65rem; background: var(--paper); box-shadow: 0 4px 20px #293b3729; font-size: .875rem; }
 .resumeSession button { min-width: 44px; min-height: 44px; }
 @media (max-width: 900px) {
   .returnToEditor { display: block; }
