@@ -33,7 +33,7 @@ test("protects annotated targets from AI and confirms Japanese formatting before
   await editor.focus(); await page.keyboard.press("Control+z"); await expect(editor).toHaveText("葵は叫ぶ!?..."); await expect(editor.locator("[data-novel-ruby]")).toHaveText("葵");
 });
 
-for (const [tool, label, briefLabel] of [["describe", "五感の描写（Describe）", "描きたい対象・場面"], ["guided-write", "展開を指定（Guided Write）", "次に起こしたいこと"]] as const) {
+for (const [tool, label, briefLabel] of [["describe", "描写を足す（Describe）", "描きたい対象・場面"], ["guided-write", "展開を指定（Guided Write）", "次に起こしたいこと"]] as const) {
   test(`${tool}: compares two contextual candidates and inserts only after explicit acceptance`, async ({ page }) => {
     const requests: AiEditRequest[] = [];
     await page.route("**/api/ai/edits", async (route) => { const parsed = validateAiEditRequest(route.request().postDataJSON()); if (!parsed.success) throw new Error("request"); requests.push(parsed.data); await route.continue(); });

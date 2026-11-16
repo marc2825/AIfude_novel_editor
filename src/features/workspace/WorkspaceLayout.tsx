@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
-import { WRITING_TOOLS, type WritingToolId } from "../ai-edit/writing-tools";
+import { WRITING_TOOL_GROUPS, WRITING_TOOLS, type WritingToolId } from "../ai-edit/writing-tools";
 import { WorkspaceIcon } from "./WorkspaceIcon";
 import styles from "./Workspace.module.css";
 
@@ -73,16 +73,21 @@ export function WorkspaceLayout({ header, files, editor, panels, alerts, childre
           <select aria-label="AIツール" value={writingTool} disabled={!onWritingToolChange} onChange={(event) => {
             const tool = WRITING_TOOLS.find((entry) => entry.id === event.target.value);
             if (tool) onWritingToolChange?.(tool.id);
-          }}>{WRITING_TOOLS.map((tool) => <option value={tool.id} key={tool.id}>{tool.label}</option>)}</select>
+          }}>{WRITING_TOOL_GROUPS.map((group) => <optgroup label={group.label} key={group.id}>
+            {WRITING_TOOLS.filter((tool) => tool.group === group.id).map((tool) => <option value={tool.id} key={tool.id}>{tool.label}</option>)}
+          </optgroup>)}</select>
         </label>
         <fieldset className={styles.writingTools}>
-          <legend>AIツール</legend>
-          {WRITING_TOOLS.map((tool) => <label key={tool.id} title={`${tool.english}：${tool.description}`}>
-            <input type="radio" name="writing-tool" aria-label={`${tool.label}（${tool.english}）`}
-              checked={writingTool === tool.id} disabled={!onWritingToolChange}
-              onChange={() => onWritingToolChange?.(tool.id)} />
-            <span className={styles.writingToolOption}><WorkspaceIcon name={tool.id} /><span>{tool.label}</span></span>
-          </label>)}
+          <legend className={styles.writingToolsTitle}>AIツール</legend>
+          {WRITING_TOOL_GROUPS.map((group) => <fieldset key={group.id} className={styles.writingToolGroup}>
+            <legend>{group.label}</legend>
+            {WRITING_TOOLS.filter((tool) => tool.group === group.id).map((tool) => <label key={tool.id} title={`${tool.english}：${tool.description}`}>
+              <input type="radio" name="writing-tool" aria-label={`${tool.label}（${tool.english}）`}
+                checked={writingTool === tool.id} disabled={!onWritingToolChange}
+                onChange={() => onWritingToolChange?.(tool.id)} />
+              <span className={styles.writingToolOption}><WorkspaceIcon name={tool.id} /><span>{tool.label}</span></span>
+            </label>)}
+          </fieldset>)}
         </fieldset>
         <div className={styles.panelTools}>
           {trigger("feedback", "診断")}

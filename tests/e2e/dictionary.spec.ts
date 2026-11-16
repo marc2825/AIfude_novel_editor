@@ -107,7 +107,7 @@ test("dictionary results expire on selection changes and mode switching closes t
 test("dictionary requires a word selection and rejects oversized queries without sending", async ({ page }) => {
   await page.goto("/"); const editor = manuscriptEditor(page); await expect(editor).toBeEditable();
   await editor.fill("語".repeat(101));
-  await page.getByRole("radio", { name: "自由指示（Custom）", exact: true }).focus();
+  await page.getByRole("radio", { name: "展開を指定（Guided Write）", exact: true }).focus();
   await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("radio", { name: "辞書（Dictionary）", exact: true })).toBeChecked();
   await editor.focus(); await page.keyboard.press("Control+k");

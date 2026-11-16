@@ -2,19 +2,26 @@ import type { AiEditPresetId } from "../../domain/ai-edit";
 import { getPresetDefaultInstruction } from "./intent";
 import { isCompletionOperation, type CompletionOperation } from "../../domain/completion";
 
-export const WRITING_TOOLS = [
-  { id: "rewrite", label: "書き直し", english: "Rewrite", description: "意味と文体を保ち、自然な表現に整えます。" },
-  { id: "transform", label: "文体変換", english: "Transform", description: "雰囲気と強さを指定して、文体を変えます。" },
-  { id: "expand", label: "膨らませる", english: "Expand", description: "新しい事実を加えず、原文の描写を詳しくします。" },
-  { id: "condense", label: "短くする", english: "Condense", description: "要点を保ち、冗長な表現を減らします。" },
-  { id: "custom", label: "自由指示", english: "Custom", description: "出来事・人物・視点・事実を保つ範囲で、自由に指示します。" },
-  { id: "dictionary", label: "辞書", english: "Dictionary", description: "語句の意味をLLMで調べるか、検索サイトを開きます。本文は変更しません。" },
-  { id: "infill", label: "中間補完", english: "Infill", description: "空白だけを選択するか途中の空段落にカーソルを置き、前後をつなぐ文章を作ります。" },
-  { id: "continue", label: "続きを書く", english: "Continue", description: "現在の章の末尾にカーソルを置き、直前の文章に続く候補を作ります。" },
-  { id: "context-insert", label: "文脈で挿入", english: "Context Insert", description: "挿入位置にカーソルを置き、書きたい内容と前後の文脈に沿った文章を作ります。" },
-  { id: "describe", label: "五感の描写", english: "Describe", description: "五感・比喩・内面の描写を2案から比較し、カーソル位置への挿入を確認します。" },
-  { id: "guided-write", label: "展開を指定", english: "Guided Write", description: "次に起こすことと長さを指定して2案以上を比較します。自動で物語は進めません。" },
+export const WRITING_TOOL_GROUPS = [
+  { id: "revise", label: "選択範囲を直す" },
+  { id: "write", label: "カーソル位置に書く" },
+  { id: "lookup", label: "語句を調べる" },
 ] as const;
+export type WritingToolGroupId = typeof WRITING_TOOL_GROUPS[number]["id"];
+
+export const WRITING_TOOLS = [
+  { id: "rewrite", group: "revise", label: "書き直し", english: "Rewrite", description: "意味と文体を保ち、自然な表現に整えます。" },
+  { id: "transform", group: "revise", label: "文体変換", english: "Transform", description: "雰囲気と強さを指定して、文体を変えます。" },
+  { id: "expand", group: "revise", label: "膨らませる", english: "Expand", description: "新しい事実を加えず、原文の描写を詳しくします。" },
+  { id: "condense", group: "revise", label: "短くする", english: "Condense", description: "要点を保ち、冗長な表現を減らします。" },
+  { id: "custom", group: "revise", label: "自由指示", english: "Custom", description: "出来事・人物・視点・事実を保つ範囲で、自由に指示します。" },
+  { id: "infill", group: "write", label: "中間補完", english: "Infill", description: "空白だけを選択するか途中の空段落にカーソルを置き、前後をつなぐ文章を作ります。" },
+  { id: "continue", group: "write", label: "続きを書く", english: "Continue", description: "現在の章の末尾にカーソルを置き、直前の文章に続く候補を作ります。" },
+  { id: "context-insert", group: "write", label: "文脈で挿入", english: "Context Insert", description: "挿入位置にカーソルを置き、書きたい内容と前後の文脈に沿った文章を作ります。" },
+  { id: "describe", group: "write", label: "描写を足す", english: "Describe", description: "カーソル位置に入れる五感（視覚・聴覚など）・比喩・内面の描写を、2案以上から比べて選びます。" },
+  { id: "guided-write", group: "write", label: "展開を指定", english: "Guided Write", description: "次に起こすことと長さを指定して2案以上を比較します。自動で物語は進めません。" },
+  { id: "dictionary", group: "lookup", label: "辞書", english: "Dictionary", description: "語句の意味をLLMで調べるか、検索サイトを開きます。本文は変更しません。" },
+] as const satisfies readonly Readonly<{ id: string; group: WritingToolGroupId; label: string; english: string; description: string }>[];
 export type WritingToolId = typeof WRITING_TOOLS[number]["id"];
 
 export function writingToolOperation(tool: WritingToolId): CompletionOperation | undefined {

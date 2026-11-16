@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { manuscriptEditor, selectParagraphText } from "./ai-edit-helpers";
-import { WRITING_TOOLS } from "../../src/features/ai-edit/writing-tools";
+import { WRITING_TOOL_GROUPS, WRITING_TOOLS } from "../../src/features/ai-edit/writing-tools";
 
 test("shows readable icon tools and preserves keyboard selection without sending or editing", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
@@ -11,8 +11,16 @@ test("shows readable icon tools and preserves keyboard selection without sending
   await expect(editor).toBeEditable();
   await editor.fill("本文はツールの選択だけでは変更しません。");
   const rail = page.getByRole("navigation", { name: "執筆ツール", exact: true });
+  for (const group of WRITING_TOOL_GROUPS) {
+    const members = WRITING_TOOLS.filter((tool) => tool.group === group.id);
+    await expect(rail.getByRole("group", { name: group.label, exact: true }).getByRole("radio")).toHaveCount(members.length);
+  }
+  await expect(page.locator('select[aria-label="AIツール"] > optgroup')).toHaveCount(WRITING_TOOL_GROUPS.length);
   for (const tool of WRITING_TOOLS) {
-    const radio = rail.getByRole("radio", { name: `${tool.label}（${tool.english}）`, exact: true });
+    const group = WRITING_TOOL_GROUPS.find((entry) => entry.id === tool.group);
+    if (!group) throw new Error(`group ${tool.group}`);
+    const radio = rail.getByRole("group", { name: group.label, exact: true }).getByRole("radio", { name: `${tool.label}（${tool.english}）`, exact: true });
+    await expect(page.locator(`select[aria-label="AIツール"] > optgroup[label="${group.label}"] > option[value="${tool.id}"]`)).toHaveCount(1);
     const label = radio.locator("..");
     await expect(label.locator("svg")).toHaveAttribute("aria-hidden", "true");
     const text = label.getByText(tool.label, { exact: true });
@@ -26,6 +34,9 @@ test("shows readable icon tools and preserves keyboard selection without sending
   await rail.getByRole("radio", { name: "書き直し（Rewrite）", exact: true }).focus();
   await page.keyboard.press("ArrowRight");
   await expect(rail.getByRole("radio", { name: "文体変換（Transform）", exact: true })).toBeChecked();
+  await rail.getByRole("radio", { name: "自由指示（Custom）", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(rail.getByRole("radio", { name: "中間補完（Infill）", exact: true })).toBeChecked();
   await rail.getByRole("button", { name: "作品メモリ", exact: true }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "サイドパネルを閉じる" })).toBeFocused();
