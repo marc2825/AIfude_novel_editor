@@ -1035,6 +1035,29 @@ Acceptance Criteriaはすべて自動検査で確認した。操作文字の拡�
 
 Pythonの文書検査で、全Markdownの相対リンク80件・見出しアンカー・コードフェンスを確認し、エラー0件。対象6文書でコードブロック・インラインコード・リンク先が変更前と一致し、追加された数値は分類数の「3」だけであることを確認した。コード・テスト・依存は変更していない。仕様書・決定記録・過去の計画・AGENTS.md・skillsは対象外。commit・pushは行わない。
 
+### Task 20.8：CIの依存監査失敗の修正
+
+2026-11-17の依頼。mainへのpush後、CIの `pnpm audit --audit-level=moderate` がNext.js 16.4.1の脆弱性（GHSA-mfr8-8qww-v76h、修正版16.4.5以降）で失敗した。`next` と `eslint-config-next` を同じマイナー版の16.4.6へ更新する。ほかの依存とアプリのコードは変更しない。Acceptance Criteria：
+
+- `pnpm audit --audit-level=moderate` が0件になる。
+- frozen install、`pnpm check`、build、CIと同じE2Eがローカルで通る。結果と未実施を区別して記録する。
+
+#### Task 20.8の変更・検査結果（2026-11-17）
+
+変更ファイル：`package.json`、`pnpm-lock.yaml`。lockfileではNext関連の16.4.6への更新に加え、ESLint resolverのWASM用optional依存 `@napi-rs/wasm-runtime` が既存の1.2.6へ統合された（1.2.4→1.2.6）。
+
+| 検査 | 結果 |
+|---|---|
+| `pnpm install --frozen-lockfile` | 成功 |
+| `pnpm audit --audit-level=moderate` | 脆弱性0件 |
+| `pnpm check`（ネットワーク隔離） | 型・lint成功、85ファイル / 1,088テスト成功 |
+| `pnpm build`（独立コピー） | 成功 |
+| `pnpm test:e2e`（独立コピー） | 105件成功（標準71、privacy 1、local 2、ChatGPT mock 2、比較6、モバイル23） |
+| `pnpm test:e2e:pwa` | Chromium / WebKitの7件成功 |
+| `pnpm test:e2e:sync` | 2件成功 |
+
+Task 20.6で開発サーバーのInsightバッジにより失敗した標準E2E 2件も成功した。ブラウザーの共有ライブラリは検査用の `LD_LIBRARY_PATH` と `NOVEL_WEBKIT_EXECUTABLE` で補った。GitHub上のCIはpush後に確認する。
+
 ### Task 20.12：商用禁止ライセンスへの変更
 
 2026-11-18の依頼。ライセンスをApache-2.0からPolyForm Noncommercial License 1.0.0へ変える（[D-048](DECISIONS.md#d-048ライセンスをpolyform-noncommercial-100へ変更する)）。LICENSEは公式本文（polyform-licensesの1.0.0タグ、SHA-256 `c0ea4a89…fabbe5`）をそのまま置き、NOTICEに `Required Notice:` の著作権表示と旧版の扱いを書いた。package.jsonの `license`、README、BRANDING、PUBLISHING、THIRD_PARTY_LICENSES、PROVIDER_DISTRIBUTION_REVIEWを更新した。コードと依存は変更していない。commitは行わない。
