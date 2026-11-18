@@ -65,6 +65,10 @@ export function analyzeJapanese(text: string): DiagnosticAnalysis {
       const from = sentence.index + token.index;
       seenSpellings.set(token.segment, from);
       if (particles.has(token.segment)) particleCount.set(token.segment, (particleCount.get(token.segment) ?? 0) + 1);
+      const previous = tokens[index - 1];
+      if (previous && previous.segment === token.segment && previous.index + previous.segment.length === token.index &&
+          Array.from(token.segment).length >= 2 && /\p{Script=Han}/u.test(token.segment)) add("typo", token.segment, sentence.index + previous.index, from + token.segment.length,
+        "誤字の候補", `「${token.segment}」が続けて2回あります`, "入力の重複でないか確認してください。意図した反復なら無視できます。");
       if (Array.from(token.segment).length < 2 || stopWords.has(token.segment)) continue;
       const keys = [token.segment];
       const next = tokens[index + 1];
@@ -105,6 +109,8 @@ export function analyzeJapanese(text: string): DiagnosticAnalysis {
     offset += character.length;
   }
   for (const opening of stack) add("bracket", opening.character, opening.offset, opening.offset + 1, "括弧の対応を確認", `「${opening.character}」が閉じられていません`, "章をまたぐ台詞など意図した省略なら無視できます。");
+  for (const match of text.matchAll(/をを|がが|にに|でで/gu)) add("typo", match[0], match.index, match.index + match[0].length, "誤字の候補",
+    `助詞「${match[0].slice(0, 1)}」が続いています`, "入力の重複でないか確認してください。語の一部や意図した表現なら無視できます。");
   for (const match of text.matchAll(/[、。]{2,}/gu)) add("punctuation", match[0], match.index, match.index + match[0].length, "句読点の連続", `「${match[0]}」が連続しています`, "間や余韻の表現なら維持してください。");
   const characters = Array.from(text).length;
   return { issues: issues.sort((a, b) => a.from - b.from || a.rule.localeCompare(b.rule)), truncated,

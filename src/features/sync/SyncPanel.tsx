@@ -8,6 +8,7 @@ import { downloadWorkspaceFile } from "../workspace/backup";
 import { useOnline } from "../offline/use-online";
 import type { WorkspaceSyncActions } from "./operations";
 import { SyncTransportError, type SyncTransport } from "./transport";
+import { HelpHeading } from "../ui/HelpTip";
 
 const errors = { offline: "オフラインです。原稿は端末に保存されています。接続後に再送を選んでください。", auth: "同期の認証が失効しています。再認証後に再送してください。", network: "同期先へ接続できません。送信待ちは保持しています。", invalid: "同期データを検証できませんでした。原稿と送信待ちは保持しています。", limit: "同期先の容量・件数上限に達しました。原稿と送信待ちは端末に保持しています。", unconfigured: "同期先が未設定です。ネットワークへ送信していません。" };
 export function SyncPanel({ actions, onSave, onImport, disabled, transport }: Readonly<{
@@ -33,10 +34,8 @@ export function SyncPanel({ actions, onSave, onImport, disabled, transport }: Re
   async function saved() { const result = await onSave(); if (!result.ok) throw new Error("Local save failed"); }
   async function refresh(value: Promise<SyncState>) { const next = await value; if (alive.current) setState(next); }
   return <section aria-label="端末同期" style={{ marginBlock: "1rem" }}>
-    <h3>端末同期</h3>
-    {!transport ? <p>プレビュー機能：ネットワーク同期の接続設定は未提供です。端末移行用ファイルの書き出し・コピー復元を利用できます。</p> : null}
-    <p>{transport ? `同期先：${transport.destination}` : "接続先は未設定です。この版ではネットワーク同期を開始しません。端末移行用ファイルは利用できます。"}</p>
-    <p>同期は初期OFFです。本文・全章・作品メモリ・執筆設定・保存履歴を扱います。AI接続設定・APIキー・OAuth資格情報は含みません。</p>
+    <HelpHeading level={3} label="端末同期" help={<>同期は初期OFFです。本文・全章・作品メモリ・執筆設定・保存履歴を扱います。AI接続設定・APIキー・OAuth資格情報は含みません。</>}>端末同期（プレビュー）</HelpHeading>
+    <p>{transport ? `同期先：${transport.destination}` : "接続先は未設定です。端末移行用ファイルの書き出し・コピー復元は使えます。"}</p>
     <details><summary>保存先と保護方式</summary><p>端末には送信待ちと受信コピーを保存します。接続時は同じサイトのHTTPSサーバーへ送信する設計です。サーバー管理者は原稿を読めます。端末間暗号化（E2EE）は未対応です。原稿・メモに自分で記載した秘密は自動除去されません。</p><p>同期先との連携は認証方式の決定・検証後に提供します。端末からの削除を同期先へ伝播しません。復旧後の再送は明示操作です。</p></details>
     <label style={{ display: "flex", alignItems: "center", minHeight: 44, gap: 8 }}><input type="checkbox" style={{ width: 20, height: 20, flex: "0 0 20px" }} checked={state?.enabled ?? false} disabled={disabled || busy || !state}
       onChange={(event) => {

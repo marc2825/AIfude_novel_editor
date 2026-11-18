@@ -10,6 +10,7 @@ import { getEditGuardState } from "../editor/plugins/edit-guard";
 import { documentToPlainText } from "../editor/plain-text";
 import type { WorkspaceActionResult } from "./use-workspace";
 import styles from "../feedback/Feedback.module.css";
+import { HelpHeading } from "../ui/HelpTip";
 
 export type AuthoringPanelHandle = { save: () => Promise<WorkspaceActionResult> };
 type Props = Readonly<{ profile: AuthoringProfile; workspace: WorkspaceSnapshot; editor: Editor | null; disabled: boolean;
@@ -89,7 +90,7 @@ export const AuthoringPanel = forwardRef<AuthoringPanelHandle, Props>(function A
     return `出典：${chapter?.title ?? "削除済み/未確認の章"}・revision ${value.contentRevision}（現在の整合性は要確認）`;
   }
   return <section className={styles.panel} aria-label="人物・文体・執筆ルール" onCompositionStartCapture={() => { composing.current = true; }} onCompositionEndCapture={() => { composing.current = false; }}>
-    <h3>人物・文体・執筆ルール</h3><p>作品ごとに保存します。AIへの参照は生成ごとに初期OFFです。</p>
+    <HelpHeading level={3} label="人物・文体・執筆ルール" help={<>作品ごとに保存します。AIへの参照は生成ごとに初期OFFです。</>}>人物・文体・執筆ルール</HelpHeading>
     <fieldset disabled={locked}>
       <details><summary>人物と台詞の口調（{draft.characters.length}）</summary>
         {draft.characters.map((character) => <details key={character.id}><summary>{character.name || "名前未入力"}</summary>

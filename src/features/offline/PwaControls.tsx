@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { WorkspaceActionResult } from "../workspace/use-workspace";
+import { HelpHeading } from "../ui/HelpTip";
 
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 function isInstallPrompt(event: Event): event is InstallPrompt { return "prompt" in event && typeof event.prompt === "function" && "userChoice" in event && event.userChoice instanceof Promise; }
@@ -45,15 +46,13 @@ export function PwaControls({ online, offlineShell, onSave }: Readonly<{ online:
     finally { setBusy(false); }
   }
   return <section aria-label="PWAとオフライン" style={{ marginBlock: "1rem" }}>
-    <h3>PWAとオフライン</h3><p>{ready ? "オフライン画面の準備済みです。原稿はこの端末のブラウザへ保存します。" : "オフラインで再起動するには、接続中に画面を準備してください。"}</p>
+    <HelpHeading level={3} label="PWAとオフライン" help={<>iPhone/iPadはSafariの共有メニューから「ホーム画面に追加」、AndroidはChromeのメニューからインストールします。表示名はOSで異なります。画面のキャッシュに原稿・AI応答・認証情報は含めません。オフラインではAIを実行せず、通信が戻っても自動で再送信しません。</>}>PWAとオフライン</HelpHeading><p>{ready ? "オフライン画面の準備済みです。原稿はこの端末のブラウザへ保存します。" : "オフラインで再起動するには、接続中に画面を準備してください。"}</p>
     <button type="button" disabled={!online || busy} onClick={() => void prepare()}>{ready ? "オフライン画面の更新を確認" : "オフライン利用を準備"}</button>
     <button type="button" disabled={busy} onClick={async () => {
       try { const persisted = await navigator.storage?.persist?.(); setMessage(persisted ? "ブラウザから永続保存を許可されました。端末やブラウザからの手動削除には備えてバックアップしてください。" : "永続保存の許可を得られませんでした。編集は続けられます。JSONバックアップを併用してください。"); }
       catch { setMessage("永続保存の許可を確認できませんでした。JSONバックアップを併用してください。"); }
     }}>原稿の永続保存を要求</button>
     {install ? <button type="button" onClick={async () => { try { await install.prompt(); await install.userChoice; } catch { setMessage("インストールできませんでした。ブラウザのメニューを確認してください。"); } finally { setInstall(null); } }}>ホーム画面へ追加</button> : null}
-    <p>iPhone/iPadはSafariの共有メニューから「ホーム画面に追加」。AndroidはChromeのメニューのインストール/ホーム画面追加を使います。表示名はOSで異なります。</p>
-    <p>画面のキャッシュに原稿・AI応答・認証情報を含めません。オフラインではAIを実行せず、通信復旧後も自動再送信しません。</p>
     {offlineShell ? <button type="button" disabled={!online || busy} onClick={async () => {
       setBusy(true);
       // A fresh navigation reads the server runtime; the static offline shell never does.

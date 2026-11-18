@@ -3,8 +3,16 @@ import { aiEditRequestSchema, aiEditSuccessResponseSchema } from "./ai-edit";
 
 export const FEEDBACK_TEXT_LIMIT = 6_000;
 const boundedText = (maximum: number) => z.string().refine((value) => value.isWellFormed() && Array.from(value).length <= maximum);
+export const FEEDBACK_FOCUSES = [
+  { id: "general", label: "総合" },
+  { id: "typos", label: "誤字脱字" },
+  { id: "naturalness", label: "日本語の自然さ" },
+] as const;
+export type FeedbackFocus = typeof FEEDBACK_FOCUSES[number]["id"];
+export const feedbackFocusSchema = z.enum(["general", "typos", "naturalness"]);
 export const feedbackRequestSchema = z.object({
   schemaVersion: z.literal(1), requestId: z.uuid(), text: boundedText(FEEDBACK_TEXT_LIMIT).refine((value) => value.trim().length > 0),
+  focus: feedbackFocusSchema.optional(),
   consent: aiEditRequestSchema.shape.consent, modelId: aiEditRequestSchema.shape.modelId,
   allowPaidApi: aiEditRequestSchema.shape.allowPaidApi, connectionId: aiEditRequestSchema.shape.connectionId,
 }).strict();

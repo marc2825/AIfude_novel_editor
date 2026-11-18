@@ -1086,3 +1086,45 @@ Task 20.6で開発サーバーのInsightバッジにより失敗した標準E2E 
 
 2026-11-18の依頼（[D-050](DECISIONS.md#d-050chatgptとclaude-cliのサブスクリプション連携を実験的な機能とする)）。接続先名を「ChatGPTサブスク（実験的）」「Claudeサブスク（実験的）」「Claudeサブスク（公式CLI・実験的）」に変え、ChatGPTとClaudeの接続設定に利用条件を確認中である旨を表示した。README、AI接続ガイド、ROADMAP、配布前確認にも反映した。連携の処理と初期設定は変更していない。`pnpm check`（1,088テスト）と `pnpm test:e2e`（105件）が成功した。commitは行わない。
 
+
+## Phase 21：画面の説明の整理と、投稿・診断・作品管理の拡張
+
+2026-11-18の依頼。画面の説明が冗長で見出しと説明の区別がつきにくい点を直し、開ける形式の明示、保存済み作品の削除、検索の説明、診断の誤字脱字・自然さ、pixiv出力、READMEのバッジを加える。本文の正本・AI適用・保存の不変条件は変えない。
+
+### Task 21.1：READMEのバッジ
+
+バージョン（package.json）、プレビュー版、ライセンス、CI、Node.jsのバッジをロゴの下に置く。
+
+### Task 21.2：検索の説明
+
+検索・置換の説明を「現在の章を検索します。（Cmd/Ctrl + F または H）」にする。
+
+### Task 21.3：開ける形式と保存済み作品の削除
+
+「ファイルを開く」の横のHelpTipで、.json / .txt と10MiBの上限を示す。「作品を管理」から「ファイル」パネルの保存済み作品一覧を開き、作品を開く・確認後にごみ箱へ移す操作を置く。開いていない作品は `TrashRepository.removeSavedWorkspace` で保存履歴ごと1回のトランザクションでごみ箱へ移し、開いている作品は既存の削除経路を使う。
+
+### Task 21.4：pixiv向け出力
+
+[D-051](DECISIONS.md#d-051pixiv向け出力はルビだけを扱う) の範囲で、ルビを `[[rb:親文字 > 読み]]` として出力し、読み込みも可逆に検証する。
+
+### Task 21.5：診断の誤字脱字と日本語の自然さ
+
+[D-053](DECISIONS.md#d-053診断に誤字の候補とai-feedbackの確認の種類を追加する) の通り、ローカル診断に誤字の候補を、AI Feedbackに「確認の種類」を加える。
+
+### Task 21.6：見出しの強弱と説明の最小化
+
+[D-052](DECISIONS.md#d-052説明はhelptipへ移し補助パネルの見出しを揃える) の通り、補助パネルの見出し・説明・状態表示の書式を揃え、設定・AI接続・作品メモリ・診断・組版・ファイル・同期・PWA・履歴の補足説明をHelpTipへ移す。
+
+#### Phase 21の変更・検査結果（2026-11-18）
+
+新規：`src/features/ui/HelpTip.tsx`（`HelpTip`・`HelpHeading`）、`SavedWorksPanel.tsx`、`TrashRepository.removeSavedWorkspace`。変更：各補助パネル、`WorkspaceFiles`、`typography.ts`（pixiv）、`japanese-diagnostics.ts`（誤字の候補）、`feedback.ts`・`feedback-handler.ts`（確認の種類）、README。保存スキーマと依存は変更していない。
+
+| 検査 | 結果 |
+|---|---|
+| 型・lint | 成功 |
+| Vitest | 86ファイル / 1,096テスト成功（保存済み作品・HelpTip・pixiv・誤字の候補・Feedbackの確認の種類を追加） |
+| `pnpm test:e2e`（独立コピー） | 107件成功（標準73、privacy 1、local 2、ChatGPT mock 2、比較6、モバイル23）。保存済み作品の削除とpixiv出力のE2Eを追加 |
+| `pnpm build`、PWA E2E、同期E2E | 成功、7件、2件 |
+| 画面の目視 | 1440px幅で全補助パネル、390px幅でHelpTipのタップ表示と外側タップで閉じる動作をChromiumで確認 |
+
+初回の標準E2Eで、同期パネルの「接続先は未設定」の文言を縮めたため1件失敗した。この表示は判断に必要なため文言を戻し、再実行で成功した。実機のスクリーンリーダー・iOS/Android・日本語IMEでのHelpTipの操作は未確認。pixivの仕様はヘルプセンターを読めていない。commitは行わない。

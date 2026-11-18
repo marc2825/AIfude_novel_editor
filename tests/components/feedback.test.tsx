@@ -30,6 +30,11 @@ describe("Feedback UI lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "AIコメントを生成" }));
     await screen.findByText("強調が必要か確認してください。");
     expect(screen.queryByRole("button", { name: "採用" })).toBeNull(); expect(getPlainText()).toBe("一番最初に会った。");
+    expect(send.mock.calls[0][0].focus).toBe("general");
+    fireEvent.change(screen.getByRole("combobox", { name: "確認の種類" }), { target: { value: "typos" } });
+    expect(screen.queryByText("強調が必要か確認してください。")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "AIコメントを生成" }));
+    await screen.findByText("強調が必要か確認してください。"); expect(send.mock.calls[1][0].focus).toBe("typos");
   });
   it.each(["document", "selection", "cancel", "context"] as const)("discards abort-ignoring late replies after %s changes", async (kind) => {
     const pending = createDeferred<FeedbackResponse>(); const send = vi.spyOn(client, "requestFeedback").mockReturnValue(pending.promise);

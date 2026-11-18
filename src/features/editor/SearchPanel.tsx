@@ -53,7 +53,7 @@ export function SearchPanel({ editor, disabled }: Readonly<{ editor: Editor | nu
   return <section className={styles.writingTools} aria-label="本文の検索と置換">
     <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>検索・置換</button>
     {open ? <div>
-      <p>現在の章を検索します。Cmd/Ctrl + F または H。置換は確認後に実行します。</p>
+      <p>現在の章を検索します。（Cmd/Ctrl + F または H）</p>
       <label>検索語<textarea rows={1} ref={inputRef} aria-label="検索語" value={query} onChange={(event) => { setQuery(event.target.value); setSearch(null); }} /></label>
       <label><input type="checkbox" checked={caseSensitive} onChange={(event) => { setCaseSensitive(event.target.checked); setSearch(null); }} />大文字・小文字を区別</label>
       <button type="button" disabled={!editor || !query} onClick={find}>検索</button>

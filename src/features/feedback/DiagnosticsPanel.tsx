@@ -10,6 +10,7 @@ import { replaceCapturedSelection } from "../editor/replace-selection";
 import { DiffPreview } from "../ai-edit/DiffPreview";
 import { selectDiagnostic, showDiagnostics } from "./diagnostic-anchors";
 import styles from "./Feedback.module.css";
+import { HelpHeading } from "../ui/HelpTip";
 
 type Result = { snapshot: SearchSnapshot; analysis: DiagnosticAnalysis };
 export function DiagnosticsPanel({ editor, context, onAi, children }: Readonly<{
@@ -83,17 +84,16 @@ export function DiagnosticsPanel({ editor, context, onAi, children }: Readonly<{
   const stats = result?.analysis.stats;
   return <section className={styles.panel} aria-label="日本語診断とFeedback"
     onCompositionStartCapture={() => { composing.current = true; }} onCompositionEndCapture={() => { composing.current = false; }}>
-    <h3>日本語の確認候補</h3>
-    <p>意図した反復や台詞は維持できます。規則による観測とAIの主観的コメントを分けて表示します。</p>
+    <HelpHeading level={3} label="日本語の確認候補" help={<>誤字の候補、語尾や語の反復、長い文、括弧の対応などを、この端末内の規則で調べます。本文は送信しません。意図した反復や台詞は「この表現を無視」で残せます。</>}>日本語の確認候補</HelpHeading>
     <button type="button" disabled={!editor || busy} onClick={analyze}>{result ? "再解析" : "章を解析"}</button>
     <p role="status">{status}</p>
-    {stats ? <section aria-label="章全体のローカルFeedback"><h4>章全体のリズム</h4>
+    {stats ? <section aria-label="章全体のローカルFeedback"><HelpHeading level={4} label="章全体のリズム" help={<>文の境界と語の区切りは推定です。長短の偏りは作風として選べます。</>}>章全体のリズム</HelpHeading>
       <dl className={styles.stats}><dt>文字数 / 文数</dt><dd>{stats.characters} / {stats.sentences}</dd>
         <dt>平均 / 最長の文</dt><dd>{stats.averageLength.toFixed(1)} / {stats.longestSentence}文字</dd>
         <dt>短文≤20 / 長文≥80</dt><dd>{stats.shortSentences} / {stats.longSentences}文</dd>
         <dt>括弧内の台詞比率</dt><dd>{(stats.dialogueRatio * 100).toFixed(1)}%</dd>
         <dt>漢字 / ひらがな</dt><dd>{(stats.kanjiRatio * 100).toFixed(1)}% / {(stats.hiraganaRatio * 100).toFixed(1)}%</dd>
-      </dl><p>文の境界と語の区切りは推定です。長短の偏りは作風として選べます。</p></section> : null}
+      </dl></section> : null}
     {ignored.size ? <button type="button" onClick={() => { setIgnored(new Set()); if (editor && result) showDiagnostics(editor, result.snapshot, result.analysis.issues); }}>無視を解除（この章を開いている間）</button> : null}
     {result?.analysis.truncated ? <p>表示は先頭1,000件までです。本文は省略せず統計を計算しています。</p> : null}
     <ol className={styles.issues}>{visible.map((issue) => <li key={issue.id}>

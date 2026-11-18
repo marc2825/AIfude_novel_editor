@@ -79,6 +79,22 @@ describe("recoverable deletion", () => {
     expect(copiedTrash?.chapterId).toBe(copy.chapter.id); expect(copiedTrash?.snapshot.chapter.body).toEqual(current.chapter.body);
     await trash.purge(reference(current), entry.id); expect((await trash.list()).some((item) => item.id === entry.id)).toBe(false);
   });
+  it("moves a saved non-active work with its history to the trash and keeps the open work", async () => {
+    const repo = new WorkspaceRepository(database); const trash = new TrashRepository(database); const history = new WritingHistoryRepository(database);
+    const first = await repo.save(createWorkspaceFixture()); await history.add(createHistoryEntry(first, "初稿", "manual"));
+    const second = await repo.activateFile(reference(first), createWorkspaceFixture({ identity: "replacement" }));
+    await expect(trash.removeSavedWorkspace(reference(second), second.project.id)).rejects.toThrow();
+    await expect(trash.removeSavedWorkspace({ ...reference(second), storageVersion: 99 }, first.project.id)).rejects.toBeInstanceOf(TrashVersionConflictError);
+    await expect(trash.removeSavedWorkspace(reference(second), crypto.randomUUID())).rejects.toThrow();
+    expect(await repo.listFiles()).toHaveLength(2); expect(await trash.list()).toHaveLength(0);
+    await trash.removeSavedWorkspace(reference(second), first.project.id);
+    expect(await repo.listFiles()).toEqual([{ projectId: second.project.id, title: second.project.title }]);
+    expect(await repo.load()).toEqual(second); expect(await history.list(first.project.id)).toHaveLength(0);
+    const entry = (await trash.list())[0]; expect(entry.kind).toBe("workspace"); expect(entry.projectId).toBe(first.project.id);
+    expect(entry.snapshot.chapter.body).toEqual(first.chapter.body); expect(entry.history).toHaveLength(1);
+    await trash.restoreWorkspace(reference(second), entry.id);
+    expect(await repo.listFiles()).toHaveLength(2); expect(await repo.load()).toEqual(second); expect(await history.list(first.project.id)).toHaveLength(1);
+  });
   it("can export a deleted-only library and purges only the chosen entry", async () => {
     const repo = new WorkspaceRepository(database); const trash = new TrashRepository(database); const first = await repo.save(createWorkspaceFixture()); await repo.delete(reference(first));
     const library = await new LibraryBackupRepository(database).export(); expect(library.workspaces).toHaveLength(0); expect(library.trash).toHaveLength(1);

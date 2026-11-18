@@ -52,6 +52,29 @@ export class TrashRepository {
       return saved;
     } catch (error: unknown) { try { tx.abort(); } catch { /* Finished. */ } await tx.done.catch(() => undefined); throw error; }
   }
+  /** Move a saved, non-active work and its history to the trash in one transaction. */
+  async removeSavedWorkspace(reference: StoredWorkspaceReference | null, projectId: string): Promise<void> {
+    const tx = this.database.transaction([WORKSPACES_STORE_NAME, WORKSPACE_FILES_STORE_NAME, WORKSPACE_HISTORY_STORE_NAME, WORKSPACE_TRASH_STORE_NAME], "readwrite", { durability: "strict" });
+    try {
+      const active = tx.objectStore(WORKSPACES_STORE_NAME); const keys = await active.getAllKeys();
+      if (keys.length > 1) throw new Error("保存先が不正です。");
+      const current = keys.length === 1 ? parseWorkspaceSnapshot(await active.get(keys[0])) : null; verifyReference(current, reference);
+      if (current?.project.id === projectId) throw new Error("開いている作品はこの操作では削除できません。");
+      const files = tx.objectStore(WORKSPACE_FILES_STORE_NAME); const stored: unknown = await files.get(projectId);
+      if (stored === undefined) throw new Error("削除する作品が見つかりません。");
+      const snapshot = parseWorkspaceSnapshot(stored);
+      if (snapshot.project.id !== projectId) throw new Error("保存先が不正です。");
+      const history = tx.objectStore(WORKSPACE_HISTORY_STORE_NAME);
+      const historyKeys = await history.index("projectId").getAllKeys(projectId);
+      const entries = (await history.index("projectId").getAll(projectId)).map(parseHistoryEntry);
+      const trash = tx.objectStore(WORKSPACE_TRASH_STORE_NAME);
+      if (await trash.count() >= MAX_TRASH_ENTRIES) throw new Error("ごみ箱が満杯です。不要な項目を完全削除してください。");
+      const entry = createTrashEntry(snapshot, null, entries);
+      await trash.add(entry, entry.id);
+      for (const key of historyKeys) await history.delete(key);
+      await files.delete(projectId); await tx.done;
+    } catch (error: unknown) { try { tx.abort(); } catch { /* Finished. */ } await tx.done.catch(() => undefined); throw error; }
+  }
   async restoreChapter(reference: StoredWorkspaceReference, entryId: string): Promise<WorkspaceSnapshot> {
     const tx = this.database.transaction([WORKSPACES_STORE_NAME, WORKSPACE_TRASH_STORE_NAME], "readwrite", { durability: "strict" });
     try {

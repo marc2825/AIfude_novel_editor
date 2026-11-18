@@ -16,6 +16,7 @@ import { AiFeedbackPanel } from "../feedback/AiFeedbackPanel";
 import { DiagnosticsPanel } from "../feedback/DiagnosticsPanel";
 import { SearchPanel } from "../editor/SearchPanel";
 import { TrashPanel } from "./TrashPanel";
+import { SavedWorksPanel } from "./SavedWorksPanel";
 import { ChapterPanel, type ChapterPanelHandle } from "./ChapterPanel";
 import { WritingProgress } from "./WritingProgress";
 import { WritingHistoryPanel } from "./WritingHistoryPanel";
@@ -149,7 +150,7 @@ export function WorkspaceApp({
   const connectionDirtyRef = useRef(false);
   const {
     syncActions,
-    deleteChapter, listTrash, restoreTrash, purgeTrash,
+    deleteChapter, listTrash, restoreTrash, purgeTrash, trashSavedWork,
     changeChapters, updateWritingOptions, listHistory, createCheckpoint, restoreCheckpoint, clearHistory, exportLibrary, importLibrary, historyWarning,
     activateWorkspace,
     currentSnapshot,
@@ -319,9 +320,13 @@ export function WorkspaceApp({
     disabled={state.phase === "ready" ? state.access !== "editable" || state.operation !== "idle" : state.phase !== "deleted"}
     files={state.phase === "ready" || state.phase === "deleted" ? state.files : []}
     getCurrentSnapshot={currentSnapshot} onNew={() => switchWorkspace(createWritingWorkspace())}
-    onOpen={openWritingFile} onSave={saveCurrent} onSwitch={switchWorkspace}
+    onOpen={openWritingFile} onSave={saveCurrent} onSwitch={switchWorkspace} onManage={() => setActivePanel("backup")}
   />;
 
+  const savedWorksUi = <SavedWorksPanel activeProjectId={state.phase === "ready" ? state.workspace.project.id : null}
+    disabled={state.phase === "ready" ? state.access !== "editable" || state.operation !== "idle" : state.phase !== "deleted"}
+    files={state.phase === "ready" || state.phase === "deleted" ? state.files : []}
+    onOpen={switchWorkspace} onTrash={trashSavedWork} onTrashActive={guardedDelete} />;
   const trashUi = <TrashPanel disabled={state.phase === "ready" ? state.access !== "editable" || state.operation !== "idle" : state.phase !== "deleted"}
     refreshKey={state.phase === "ready" ? `${state.workspace.project.id}:${state.workspace.document.chapterIds.join(",")}` : state.phase}
     projectId={state.phase === "ready" ? state.workspace.project.id : null} onList={listTrash} onPurge={purgeTrash}
@@ -376,7 +381,7 @@ export function WorkspaceApp({
         header={<Header aiRuntime={aiRuntime} status="削除済み" />} files={filesUi} alerts={null}
         panels={{
         typography: null, feedback: null, settings: null, memory: null, chapters: null, history: null, connections: connectionUi,
-          backup: <>{trashUi}<LibraryBackupPanel disabled={false} onExport={exportLibrary} onImport={importLibrary} /></> }}
+          backup: <>{savedWorksUi}{trashUi}<LibraryBackupPanel disabled={false} onExport={exportLibrary} onImport={importLibrary} /></> }}
         editor={<div id="workspace-editor" role="tabpanel" aria-label="作品を選択">
           <p className={styles.feedback} role="status">
             ローカルデータを削除しました。ごみ箱から復元できます。新しい空の作品を始めるには「新規作品」を選んでください。
@@ -464,7 +469,7 @@ export function WorkspaceApp({
             const saved = await saveCurrent(); if (!saved.ok) return saved;
             invalidateConnection(); return restoreCheckpoint(entry);
           }} />,
-        backup: <>{trashUi}<LibraryBackupPanel disabled={!editable} onExport={async () => {
+        backup: <>{savedWorksUi}{trashUi}<LibraryBackupPanel disabled={!editable} onExport={async () => {
           const saved = await saveCurrent(); if (!saved.ok) throw new Error("保存できません。"); return exportLibrary();
         }} onImport={async (bundle) => { const saved = await saveCurrent(); return saved.ok ? importLibrary(bundle) : saved; }} />
           <SyncPanel key={`sync:${state.workspace.project.id}`} actions={syncActions} disabled={!editable} onSave={saveCurrent} onImport={importLibrary} transport={offlineShell ? undefined : syncTransport} /></>,

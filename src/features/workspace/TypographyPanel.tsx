@@ -1,5 +1,6 @@
 "use client";
 import type { Editor } from "@tiptap/core";
+import { HelpTip } from "../ui/HelpTip";
 import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { annotationProblems, japaneseInputSuggestion, manuscriptDocumentSchema, paragraphRuns, publicationText, type ManuscriptDocument, type PublicationFormat } from "../../domain/typography";
 import { orderedChapters } from "../../domain/chapters";
@@ -68,7 +69,7 @@ export function TypographyPanel({ editor, context, active, getCurrentSnapshot }:
   const current = target && validateSelectionSnapshot(editor, target, context).status === "valid";
   const problems = body ? annotationProblems(body) : [];
   return <section className={styles.panel} aria-label="組版と投稿用出力" onCompositionStartCapture={() => { composing.current = true; }} onCompositionEndCapture={() => { composing.current = false; }}>
-    <h3>組版と投稿用出力</h3><p>本文で範囲を選び、ここで確認して採用します。横書きの本文が編集の正本です。</p>
+    <p>本文で範囲を選び、ここで確認して採用します。<HelpTip label="組版">横書きの本文が編集の正本です。</HelpTip></p>
     <details><summary>ルビ・傍点</summary>
       <button type="button" disabled={locked} onClick={prepareAnnotation}>選択範囲の注釈を準備</button>
       {target ? <><p>対象：{target.originalText}</p><label>注釈の操作<select value={kind} onChange={(event) => {
@@ -97,9 +98,9 @@ export function TypographyPanel({ editor, context, active, getCurrentSnapshot }:
     </details>
     {problems.length ? <div role="alert">{problems.slice(0, 10).map((problem, index) => <p key={index}>{problem}</p>)}</div> : null}
     <details><summary>投稿用テキストを書き出す</summary>
-      <label>投稿先の記法<select value={format} onChange={(event) => { if (event.target.value === "kakuyomu" || event.target.value === "narou") setFormat(event.target.value); setExportPreview(null); }}><option value="kakuyomu">カクヨム</option><option value="narou">小説家になろう（ルビのみ）</option></select></label>
+      <label>投稿先の記法<select value={format} onChange={(event) => { if (event.target.value === "kakuyomu" || event.target.value === "narou" || event.target.value === "pixiv") setFormat(event.target.value); setExportPreview(null); }}><option value="kakuyomu">カクヨム</option><option value="narou">小説家になろう（ルビのみ）</option><option value="pixiv">pixiv（ルビのみ）</option></select></label>
+        <HelpTip label="投稿先の記法">カクヨムは親文字20字・読み50字まで。なろうは各10字までで、傍点は出力しません。pixivは「[[rb:親文字 &gt; 読み]]」で、読みはかな・漢字・英字だけ。傍点と半角の [ ] は出力しません。投稿記法に似た記号を含む本文は変換を拒否します。完全な復元にはJSONバックアップを使ってください。</HelpTip>
       <label><input type="checkbox" checked={allChapters} onChange={(event) => { setAllChapters(event.target.checked); setExportPreview(null); }} />全章を章見出し付きで出力</label>
-      <p>カクヨムは親文字20字・読み50字、なろうは各10字まで。なろうの傍点と、既存の投稿記法に似た記号は変換を拒否します。完全復元には設定のJSONバックアップを使ってください。</p>
       <button type="button" disabled={!editor} onClick={prepareExport}>投稿用出力を確認</button>
       {exportPreview ? <><pre className={styles.exportText}>{exportPreview.text}</pre><button type="button" onClick={download}>確認した投稿用txtを保存</button></> : null}
     </details>

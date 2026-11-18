@@ -7,6 +7,7 @@ import type { WritingHistoryEntry } from "../../persistence/writing-history";
 import { DiffPreview } from "../ai-edit/DiffPreview";
 import type { WorkspaceActionResult } from "./use-workspace";
 import styles from "./Workspace.module.css";
+import { HelpTip } from "../ui/HelpTip";
 
 function preview(workspace: WorkspaceSnapshot): string {
   return orderedChapters(workspace).map((chapter) => `【${chapter.title}】\n${chapter.body.content.map((p) => "content" in p ? p.content.map((node) => node.text).join("") : "").join("\n")}\nアウトライン：${chapter.outlineNotes}`).join("\n\n") +
@@ -41,7 +42,7 @@ export function WritingHistoryPanel({ embedded = false, active = false, workspac
     <button hidden={embedded} type="button" aria-expanded={open} onClick={() => { setOpen(!open); if (!open) void refresh(); }}>保存履歴・復元</button>
     {warning ? <p role="alert">{warning}</p> : null}
     {open ? <div>
-      <p>作品ごとに直近50件。本文・章・作品メモリ・設定を保存します。AIの候補は保存しません。</p>
+      <p>作品ごとに直近50件を残します。<HelpTip label="保存履歴">本文・章・作品メモリ・設定を保存します。AIの候補は保存しません。</HelpTip></p>
       <label><input type="checkbox" checked={workspace.project.autoHistoryEnabled} disabled={disabled || busy} onChange={(event) => void run(() => onAutoChange(event.target.checked))} />自動保存前の状態を履歴に残す（初期OFF）</label>
       <label>履歴の名前<input aria-label="履歴の名前" value={label} maxLength={120} onChange={(event) => setLabel(event.target.value)} /></label>
       <button type="button" disabled={disabled || busy} onClick={() => void run(() => onCreate(label.trim() || "手動保存"))}>現在の状態を履歴に保存</button>

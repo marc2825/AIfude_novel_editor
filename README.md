@@ -7,6 +7,14 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="package.json"><img src="https://img.shields.io/github/package-json/v/marc2825/AIfude_novel_editor?label=version&amp;color=326659" alt="バージョン"></a>
+  <img src="https://img.shields.io/badge/status-preview-c9a24a" alt="プレビュー版">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-293b37" alt="ライセンス：PolyForm Noncommercial 1.0.0"></a>
+  <a href="https://github.com/marc2825/AIfude_novel_editor/actions/workflows/ci.yml"><img src="https://github.com/marc2825/AIfude_novel_editor/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <img src="https://img.shields.io/badge/node-24.x-53645c" alt="Node.js 24系">
+</p>
+
 
 自分で書いた小説を、AIの提案と見比べながら推敲するエディタです。
 

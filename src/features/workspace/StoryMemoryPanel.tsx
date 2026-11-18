@@ -5,6 +5,7 @@ import { STORY_MEMORY_FIELDS, STORY_MEMORY_FIELD_LIMIT, storyMemoriesEqual, stor
 import { codePointLength } from "../../domain/limits";
 import type { WorkspaceActionResult } from "./use-workspace";
 import styles from "./Workspace.module.css";
+import { HelpHeading } from "../ui/HelpTip";
 
 export type StoryMemoryPanelHandle = Readonly<{ save: () => Promise<WorkspaceActionResult> }>;
 
@@ -56,7 +57,8 @@ export const StoryMemoryPanel = forwardRef<StoryMemoryPanelHandle, Readonly<{
   return <details className={styles.settings} open={embedded || undefined}>
     <summary hidden={embedded}>作品メモリ（設定・背景・登場人物）</summary>
     <div className={styles.settingsContent}>
-      <p>この作品のメモを保存します。保存したメモだけをAI生成画面で参照できます。AIが自動で書き換えることはありません。</p>
+      <HelpHeading level={3} label="作品メモ" help={<>AIが自動で書き換えることはありません。AIへの参照は毎回初期OFFで、ONにすると選んだ項目の保存済みメモが送信先のAIへ渡ります。JSONバックアップにも含まれます。</>}>作品メモ</HelpHeading>
+      <p>保存したメモだけをAI生成画面で参照できます。</p>
       {dirty ? <p role="status">保存していない作品メモリがあります。</p> : null}
       <form className={styles.settingsForm} onSubmit={submit}>
         {STORY_MEMORY_FIELDS.map(({ key, label }) => <label key={key}>
@@ -69,7 +71,6 @@ export const StoryMemoryPanel = forwardRef<StoryMemoryPanelHandle, Readonly<{
         </label>)}
         <button type="submit" disabled={disabled || saving}>{saving ? "メモリ保存中…" : "メモリを保存"}</button>
       </form>
-      <p>AIへの参照は毎回初期OFFです。ONにすると選択した項目の保存済みメモが送信先のAIへ渡ります。JSONバックアップにも含まれます。</p>
       {message ? <p role="status">{message}</p> : null}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
     </div>

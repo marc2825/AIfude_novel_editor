@@ -13,6 +13,7 @@ import {
 } from "../ai-edit/consent";
 import type { WorkspaceActionResult } from "./use-workspace";
 import styles from "./Workspace.module.css";
+import { HelpHeading } from "../ui/HelpTip";
 
 type AiModelSettingsProps = Readonly<{
   disabled: boolean;
@@ -73,13 +74,17 @@ export function AiModelSettings({
 
   return (
     <section aria-labelledby="ai-model-settings-title" className={styles.modelSettings}>
-      <h2 id="ai-model-settings-title">AIモデル</h2>
+      <HelpHeading level={2} id="ai-model-settings-title" label="AIモデル" help={<>{runtime.providerId === "chatgpt"
+        ? "生成前にアカウントで使えるモデルを確認します。"
+        : runtime.providerId === "local"
+        ? "モデルを変えたら、アプリのサーバーを再起動してください。"
+        : "一覧は文章品質の順位ではなく、提供元が示す用途と能力です。"}{runtime.available ? "利用できるかは生成時に確認します。" : ""}</>}>AIモデル</HelpHeading>
       <p id={descriptionId}>
         {runtime.providerId === "chatgpt"
-          ? "サブスクで使うモデルはサーバー設定で指定します。「自動（サーバー既定）」を選択してください。生成前にアカウントの利用可能モデルを確認します。"
+          ? "モデルはサーバー設定で指定します。「自動（サーバー既定）」を選んでください。"
           : runtime.providerId === "local"
-          ? "ローカルモデルはサーバー設定で指定します。「自動（サーバー既定）」でそのモデルを使用します。変更後はアプリのサーバーを再起動してください。"
-          : "モデルは作品ごとに保存されます。文章品質の順位ではなく、providerが示す用途と能力を表示しています。"}
+          ? "モデルはサーバー設定で指定します。「自動（サーバー既定）」でそのモデルを使います。"
+          : "モデルは作品ごとに保存されます。"}
       </p>
       <form onSubmit={saveModelPreference}>
         <label>
@@ -125,12 +130,9 @@ export function AiModelSettings({
 
       {runtime.available ? (
         <p>
-          現在のprovider：
+          現在の接続先：
           {findAiProviderDefinition(runtime.providerId ?? "")?.displayName ??
             runtime.providerId}
-          {runtime.providerId === "local" || runtime.providerId === "chatgpt"
-            ? "。接続先でのモデルの利用可否は生成時に確認されます。"
-            : "。アカウントでの利用可否は生成時に確認されます。"}
         </p>
       ) : (
         <p>AIは現在無効です。自動の既定モデルを解決できません。</p>

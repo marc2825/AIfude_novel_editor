@@ -2,7 +2,8 @@
 
 import type { Editor } from "@tiptap/core";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { FEEDBACK_TEXT_LIMIT, feedbackRequestSchema, uniqueQuoteRange, type FeedbackResponse } from "../../domain/feedback";
+import { FEEDBACK_FOCUSES, FEEDBACK_TEXT_LIMIT, feedbackRequestSchema, uniqueQuoteRange, type FeedbackFocus, type FeedbackResponse } from "../../domain/feedback";
+import { HelpHeading } from "../ui/HelpTip";
 import type { AiConsent, AiModelPreference } from "../../domain/workspace";
 import { captureSearch, isSearchCurrent, type SearchSnapshot } from "../editor/search-replace";
 import { getEditGuardState } from "../editor/plugins/edit-guard";
@@ -29,6 +30,7 @@ function FeedbackSession({ editor, contextRevision, runtime, consent, modelPrefe
   const sourceRef = useRef(source);
   useLayoutEffect(() => { sourceRef.current = source; }, [source]);
   const [response, setResponse] = useState<FeedbackResponse | null>(null);
+  const [focus, setFocus] = useState<FeedbackFocus>("general");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const active = useRef<{ id: string; controller: AbortController } | null>(null);
@@ -65,7 +67,7 @@ function FeedbackSession({ editor, contextRevision, runtime, consent, modelPrefe
   }
   async function generate() {
     if (!source || !current(source) || busy || composing.current || editor?.view.composing || !canUseAiRuntime(runtime, consent, modelPreference)) return;
-    const request = feedbackRequestSchema.safeParse({ schemaVersion: 1, requestId: crypto.randomUUID(), text: source.text,
+    const request = feedbackRequestSchema.safeParse({ schemaVersion: 1, requestId: crypto.randomUUID(), text: source.text, focus,
       modelId: requestModelIdForRuntime(runtime, modelPreference), consent: requestConsentForRuntime(runtime, consent),
       ...(runtime.paidApiEnabled ? { allowPaidApi: true } : {}), ...(runtime.connectionId ? { connectionId: runtime.connectionId } : {}),
     });
@@ -86,8 +88,11 @@ function FeedbackSession({ editor, contextRevision, runtime, consent, modelPrefe
   const model = resolveRuntimeModel(runtime, modelPreference);
   return <section className={styles.panel} aria-label="AI Feedback"
     onCompositionStartCapture={() => { composing.current = true; }} onCompositionEndCapture={() => { composing.current = false; }}>
-    <h3>AIコメント（読み取り専用）</h3>
-    <p>章全体または選択範囲を最大{FEEDBACK_TEXT_LIMIT.toLocaleString("ja-JP")}文字まで送信します。作品メモ・他章は含めません。</p>
+    <HelpHeading level={3} label="AIコメント" help={<>章全体または選択範囲を最大{FEEDBACK_TEXT_LIMIT.toLocaleString("ja-JP")}文字まで送信します。作品メモ・他章は含めません。本文は変更しません。</>}>AIコメント（読み取り専用）</HelpHeading>
+    <label>確認の種類<select value={focus} disabled={busy} onChange={(event) => {
+      const next = FEEDBACK_FOCUSES.find((entry) => entry.id === event.target.value);
+      if (next) { setFocus(next.id); setResponse(null); }
+    }}>{FEEDBACK_FOCUSES.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select></label>
     <div className={styles.actions}>
       <button type="button" disabled={!editor || busy} onClick={() => prepare(false)}>章全体を対象にする</button>
       <button type="button" disabled={!editor || busy} onClick={() => prepare(true)}>選択範囲を対象にする</button>

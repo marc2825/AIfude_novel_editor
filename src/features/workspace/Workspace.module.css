@@ -51,9 +51,21 @@
 .sideRail svg, .topActions svg { flex-shrink: 0; }
 .sidePanel { width: 22rem; max-width: 45vw; min-width: 0; flex-shrink: 0; display: flex; flex-direction: column; background: var(--paper); border-left: 1px solid var(--line); }
 .panelHeading { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 1.25rem; border-bottom: 1px solid var(--line); }
-.panelHeading h2 { font-size: .95rem; margin: 0; }
+.panelHeading h2 { font-size: 1.0625rem; font-weight: 700; margin: 0; color: var(--ink); }
 .panelHeading button { border: 0; background: transparent; font-size: 1.2rem; padding: .15rem .5rem; }
 .panelContent { padding: 1.25rem; overflow: auto; flex: 1; font-size: .9375rem; line-height: 1.7; overflow-wrap: anywhere; }
+/* One reading order for every side panel: accented section headings, ink sub-headings,
+   smaller muted descriptions, ink status messages and a rule between sections. The
+   attribute prefix outranks the per-panel module rules (Task 21.6). */
+[data-writing-panel] .panelContent :is(h2, h3) {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .125rem; margin: 0 0 .625rem; padding-left: .5rem;
+  border-left: 3px solid var(--accent); font-size: 1rem; font-weight: 700; line-height: 1.5; color: var(--ink); letter-spacing: .02em;
+}
+[data-writing-panel] .panelContent h4 { display: flex; align-items: center; flex-wrap: wrap; margin: 1rem 0 .375rem; font-size: .9375rem; font-weight: 700; color: var(--ink); }
+[data-writing-panel] .panelContent p { margin: .25rem 0 .75rem; font-size: .875rem; line-height: 1.65; color: var(--muted); }
+[data-writing-panel] .panelContent :is(article p, [role="status"], [role="alert"]) { color: var(--ink); }
+[data-writing-panel] .panelContent section + section { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+[data-writing-panel] .panelContent summary { font-weight: 600; color: var(--ink); }
 .panelContent .settings { border: 0; background: transparent; border-radius: 0; }
 .panelContent .settingsContent { padding: 0; }
 .panelContent .files { width: 100%; }
@@ -91,6 +103,14 @@
 .files select { max-width: 100%; }
 .files textarea, .writingTools textarea { width: 100%; resize: vertical; }
 .files ol { margin: 0; padding-left: 1.5rem; }
+.fileActionGroup { display: inline-flex; align-items: center; }
+.savedWorks { list-style: none; margin: 0; padding: 0; }
+.files .savedWorks li + li { margin-top: 0; }
+.savedWorks li { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .5rem 0; border-bottom: 1px solid var(--line); }
+.savedWorkTitle { min-width: 0; overflow-wrap: anywhere; font-size: .9375rem; color: var(--ink); }
+.savedWorkTitle small { margin-left: .25rem; font-size: .8125rem; color: var(--muted); }
+.savedWorkActions { display: flex; gap: .375rem; flex-shrink: 0; }
+.savedWorkActions button { padding: .3rem .65rem; font-size: .875rem; }
 .files li + li { margin-top: .5rem; }
 .writingTools { position: relative; }
 .writingTools > button { font-size: .875rem; background: transparent; border-color: transparent; }

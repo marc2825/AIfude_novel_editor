@@ -24,6 +24,7 @@ import type { WorkspaceActionResult } from "./use-workspace";
 import { AiModelSettings } from "./AiModelSettings";
 import styles from "./Workspace.module.css";
 import { isPaidApiProvider } from "../../domain/ai-models";
+import { HelpHeading } from "../ui/HelpTip";
 
 export type WorkspaceSettingsHandle = Readonly<{ save: () => Promise<WorkspaceActionResult> }>;
 
@@ -201,7 +202,7 @@ export const WorkspaceSettings = forwardRef<WorkspaceSettingsHandle, WorkspaceSe
       <summary hidden={embedded}>設定とバックアップ</summary>
       <div className={styles.settingsContent}>
         <form className={styles.settingsForm} onSubmit={saveSettings}>
-          <h2>作品設定</h2>
+          <HelpHeading level={2} label="作品設定" help={<>共通プロンプトは、AI編集で参照してほしい希望を書く欄です。</>}>作品設定</HelpHeading>
           {dirty ? <p role="status">作品設定に未保存の変更があります。</p> : null}
           <label>
             作品名
@@ -224,7 +225,7 @@ export const WorkspaceSettings = forwardRef<WorkspaceSettingsHandle, WorkspaceSe
               rows={4}
               value={commonPrompt}
             />
-            <span>最大2,000文字。将来のAI編集で参照する希望です。</span>
+            <span>最大2,000文字</span>
           </label>
           <label>
             手動文体設定
@@ -236,7 +237,7 @@ export const WorkspaceSettings = forwardRef<WorkspaceSettingsHandle, WorkspaceSe
               rows={4}
               value={manualInstructions}
             />
-            <span>最大1,000文字。</span>
+            <span>最大1,000文字</span>
           </label>
           <button disabled={!editable || controlsDisabled} type="submit">
             設定を保存
@@ -254,20 +255,17 @@ export const WorkspaceSettings = forwardRef<WorkspaceSettingsHandle, WorkspaceSe
         />
 
         <section aria-labelledby="api-connection-title">
-          <h2 id="api-connection-title">API接続</h2>
+          <HelpHeading level={2} id="api-connection-title" label="API接続" help={<>有効にしても、送信先の選択と外部送信への同意が必要です。サブスクから自動で切り替わることはありません。利用するAPIのキーとモデルはサーバー側で設定します。</>}>API接続</HelpHeading>
           <label><input type="checkbox" checked={aiRuntime.paidApiEnabled === true}
             disabled={!editable || controlsDisabled || ![aiRuntime, ...(aiRuntime.comparisonProviders ?? [])].some((provider) => isPaidApiProvider(provider.providerId))}
             onChange={(event) => onPaidApiEnabledChange?.(event.currentTarget.checked)} />
             サブスクとは別料金のAPI接続を有効にする
           </label>
-          <p>初期OFFです。この画面を再読み込みするとOFFに戻ります。有効にしても、送信先の選択と外部送信への同意が必要です。サブスクから自動で切り替わることはありません。</p>
-          <p>利用するAPIのキーとモデルはサーバー側で設定してください。</p>
+          <p>初期OFFです。画面を再読み込みするとOFFに戻ります。</p>
         </section>
         {[aiRuntime, ...(aiRuntime.comparisonProviders ?? [])].some((provider) => provider.providerId === "claude") ? <section aria-labelledby="claude-connection-title">
-          <h2 id="claude-connection-title">Claudeサブスク接続（実験的）</h2>
+          <HelpHeading level={2} id="claude-connection-title" label="Claudeサブスク接続" help={<>このPCの公式Claude CLIへ事前にログインして使います。手順はREADMEにあります。未ログインや利用枠超過のときは失敗を表示します。サブスク枠だけで使う場合は、Claudeアカウント側の追加使用量をOFFにしてください。</>}>Claudeサブスク接続（実験的）</HelpHeading>
           <p>提供元の利用条件を確認中の実験的な機能です。</p>
-          <p>このPCの公式Claude CLIへ事前ログインして使用します。接続手順はREADMEに記載しています。未ログイン・利用枠超過の場合は失敗を表示します。</p>
-          <p>サブスク枠だけで利用する場合は、Claudeアカウント側の追加使用量をOFFにしてください。</p>
         </section> : null}
 
         <AiConsentDisclosure

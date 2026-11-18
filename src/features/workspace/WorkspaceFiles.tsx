@@ -6,6 +6,7 @@ import type { WorkspaceSnapshot } from "../../domain/workspace";
 import type { WorkspaceFileInfo } from "../../persistence/workspace-repository";
 import type { WorkspaceActionResult } from "./use-workspace";
 import { createJsonWorkspaceDownload, downloadWorkspaceFile } from "./backup";
+import { HelpTip } from "../ui/HelpTip";
 import styles from "./Workspace.module.css";
 
 type Props = Readonly<{
@@ -18,13 +19,14 @@ type Props = Readonly<{
   onOpen: (file: File) => Promise<WorkspaceActionResult>;
   onSave: () => Promise<WorkspaceActionResult>;
   onSwitch: (projectId: string) => Promise<WorkspaceActionResult>;
+  onManage?: () => void;
 }>;
 
 function tabPosition(index: number): CSSProperties & { "--file-row": number } {
   return { gridColumn: index + 1, "--file-row": index + 1 };
 }
 
-export function WorkspaceFiles({ uiState, activeProjectId, disabled, files, getCurrentSnapshot, onNew, onOpen, onSave, onSwitch }: Props) {
+export function WorkspaceFiles({ uiState, activeProjectId, disabled, files, getCurrentSnapshot, onNew, onOpen, onSave, onSwitch, onManage }: Props) {
   const [closedIds, setClosedIds] = useState<readonly string[]>(() => uiState?.closedProjects() ?? []);
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -118,7 +120,8 @@ export function WorkspaceFiles({ uiState, activeProjectId, disabled, files, getC
           }
         }}>
       <button type="button" disabled={controlsDisabled} onClick={() => void run(onNew, "新しい作品を作成しました。")}>新規作品</button>
-      <button type="button" disabled={controlsDisabled} onClick={() => inputRef.current?.click()}>ファイルを開く</button>
+      <span className={styles.fileActionGroup}><button type="button" disabled={controlsDisabled} onClick={() => inputRef.current?.click()}>ファイルを開く</button>
+        <HelpTip label="ファイルを開く">作品のJSON（.json）またはUTF-8のテキスト（.txt）を、新しい作品として開きます。10MiBまで。既存の作品は上書きしません。</HelpTip></span>
       <input hidden type="file" accept=".json,.txt,application/json,text/plain" ref={inputRef} aria-label="作品ファイルを開く"
         disabled={controlsDisabled} onChange={(event) => {
           const file = event.currentTarget.files?.[0]; event.currentTarget.value = "";
@@ -132,6 +135,7 @@ export function WorkspaceFiles({ uiState, activeProjectId, disabled, files, getC
           {files.map((file) => <option key={file.projectId} value={file.projectId}>{file.title}</option>)}
         </select>
       </label>
+      {onManage ? <button type="button" disabled={disabled} onClick={() => { setMenuOpen(false); onManage(); }}>作品を管理</button> : null}
       </div>
       <button className={styles.saveButton} title="Cmd/Ctrl + S" type="button" disabled={controlsDisabled || activeProjectId === null} onClick={() => void run(onSave, "本文と作品メモリを保存しました。")}>保存</button>
     </div>

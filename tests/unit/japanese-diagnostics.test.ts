@@ -27,6 +27,13 @@ describe("Japanese diagnostic observations", () => {
     expect(result.issues.map((issue) => issue.rule)).toEqual(expect.arrayContaining(["bracket", "punctuation", "particle"]));
     expect(analyzeJapanese("「朝『夜』」（完）").issues.filter((issue) => issue.rule === "bracket")).toHaveLength(0);
   });
+  it("marks doubled particles and an immediately repeated kanji word as typo candidates only", () => {
+    const text = "本をを読んだ。学校学校へ行く。まだまだ続く。ドキドキした。";
+    const typos = analyzeJapanese(text).issues.filter((issue) => issue.rule === "typo");
+    expect(typos.map((issue) => text.slice(issue.from, issue.to))).toEqual(["をを", "学校学校"]);
+    expect(typos.every((issue) => issue.title === "誤字の候補")).toBe(true);
+    expect(analyzeJapanese("人々が来た。時々笑う。").issues.filter((issue) => issue.rule === "typo")).toEqual([]);
+  });
   it("keeps emoji and newline offsets exact and within UTF-16 boundaries", () => {
     fc.assert(fc.property(fc.array(fc.constantFrom("🙂", "が", "。", "「", "」", "東京", "\n", "一番最初"), { maxLength: 100 }), (parts) => {
       const text = parts.join(""); const result = analyzeJapanese(text);

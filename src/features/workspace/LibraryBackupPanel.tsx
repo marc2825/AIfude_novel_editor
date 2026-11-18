@@ -4,6 +4,7 @@ import { readLibraryBackup, MAX_LIBRARY_BACKUP_BYTES, type LibraryBackup } from 
 import styles from "./Workspace.module.css";
 import { downloadWorkspaceFile } from "./backup";
 import type { WorkspaceActionResult } from "./use-workspace";
+import { HelpHeading } from "../ui/HelpTip";
 
 export function LibraryBackupPanel({ disabled, onExport, onImport }: Readonly<{ disabled: boolean;
   onExport: () => Promise<LibraryBackup>; onImport: (bundle: LibraryBackup) => Promise<WorkspaceActionResult>;
@@ -22,6 +23,7 @@ export function LibraryBackupPanel({ disabled, onExport, onImport }: Readonly<{ 
     setFeedback("全作品・全章・メモ・履歴・ごみ箱を書き出しました。");
   }
   return <section className={styles.files} aria-label="全作品のバックアップ">
+    <HelpHeading level={3} label="全作品のバックアップ" help={<>全作品をJSONで書き出します（100MiBまで）。復元時は別の作品として追加し、既存の作品は上書きしません。外部AIへの同意は引き継ぎません。</>}>全作品のバックアップ</HelpHeading>
     <button type="button" disabled={disabled || busy} onClick={() => void run(download)}>全作品を一括バックアップ</button>
     <button type="button" disabled={disabled || busy} onClick={() => inputRef.current?.click()}>一括バックアップを復元</button>
     <input type="file" hidden accept=".json,application/json" aria-label="一括バックアップファイル" ref={inputRef} disabled={disabled || busy} onChange={(event) => {
@@ -32,7 +34,6 @@ export function LibraryBackupPanel({ disabled, onExport, onImport }: Readonly<{ 
         const result = await onImport(bundle); setFeedback(result.message ?? (result.ok ? "復元しました。" : "復元できませんでした。"));
       });
     }} />
-    <p>全作品のJSON（100MiBまで）。復元時は別の作品として追加します。外部AIへの同意は引き継ぎません。</p>
     {feedback ? <p role="status">{feedback}</p> : null}
   </section>;
 }

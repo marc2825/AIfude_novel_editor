@@ -1136,6 +1136,15 @@ export function useWorkspace() {
       return { ok: true, message: "作品を復元しました。保存済み作品から開けます。" };
     } catch { return { ok: false, message: "復元できませんでした。ごみ箱と現在の作品を確認してください。" }; }
   }, [activateWorkspace, changeWritingWorkspace, withTrashStorage]);
+  const trashSavedWork = useCallback(async (projectId: string): Promise<WorkspaceActionResult> => {
+    if (snapshotRef.current?.project.id === projectId) return { ok: false, message: "開いている作品は「設定」の「ローカルデータを削除」から削除してください。" };
+    try {
+      await withTrashStorage((database, reference) => new TrashRepository(database).removeSavedWorkspace(reference, projectId));
+      const files = await repositoryRef.current?.listFiles();
+      if (files && mountedRef.current) setState((value) => value.phase === "ready" || value.phase === "deleted" ? { ...value, files } : value);
+      return { ok: true, message: "作品をごみ箱へ移しました。ごみ箱から復元できます。" };
+    } catch { return { ok: false, message: "ごみ箱へ移せませんでした。作品は保持されています。" }; }
+  }, [withTrashStorage]);
   const purgeTrash = useCallback(async (id: string): Promise<WorkspaceActionResult> => {
     try { await withTrashStorage((database, reference) => new TrashRepository(database).purge(reference, id)); return { ok: true }; }
     catch { return { ok: false, message: "完全削除できませんでした。" }; }
@@ -1199,7 +1208,7 @@ export function useWorkspace() {
 
   return {
     syncActions,
-    deleteChapter, listTrash, restoreTrash, purgeTrash,
+    deleteChapter, listTrash, restoreTrash, purgeTrash, trashSavedWork,
     changeChapters, updateWritingOptions, listHistory, createCheckpoint, restoreCheckpoint, clearHistory, exportLibrary, importLibrary, historyWarning,
     activateWorkspace,
     currentSnapshot,

@@ -6,6 +6,7 @@ import { isPaidApiProvider, type PublicAiRuntime } from "../../domain/ai-models"
 import type { WorkspaceActionResult } from "../workspace/use-workspace";
 import { requestAiConnectionSettings } from "./ai-connections-client";
 import styles from "../workspace/Workspace.module.css";
+import { HelpHeading, HelpTip } from "../ui/HelpTip";
 
 export type AiConnectionSettingsHandle = Readonly<{ save: () => Promise<WorkspaceActionResult> }>;
 type Props = Readonly<{ embedded?: boolean; active?: boolean; disabled: boolean; paidApiEnabled: boolean; onPaidApiEnabledChange: (enabled: boolean) => void;
@@ -83,9 +84,10 @@ export const AiConnectionSettingsPanel = forwardRef<AiConnectionSettingsHandle, 
   return <section className={styles.files} aria-label="AI接続の設定と診断">
     <button hidden={embedded} type="button" aria-expanded={open} onClick={() => { setOpen(!open); if (!open && !data) void load(true); }}>AI接続の設定・診断</button>
     {open ? <div className={styles.settingsContent}>
-      <p>このPCのアプリ全体で使う接続先です。作品ファイルには保存しません。診断では本文・メモ・プロンプトを送信しません。</p>
+      <p>このPCのアプリ全体で使う接続先です。<HelpTip label="AI接続">作品ファイルには保存しません。診断では本文・メモ・プロンプトを送信しません。</HelpTip></p>
       <button type="button" disabled={busy} onClick={() => { if (!dirtyRef.current || window.confirm("未保存のAI接続設定を破棄して再読み込みしますか？")) void load(true); }}>AI設定を再読み込み</button>
       {draft && data ? <>
+        <h3>接続先</h3>
         <label>主に使うAI<select aria-label="主に使うAI" value={draft.primary} disabled={controlsDisabled} onChange={(event) => {
           const primary = CONNECTION_MODES.find((mode) => mode === event.target.value); if (primary) edit({ ...draft, primary });
         }}>{CONNECTION_MODES.map((mode) => <option key={mode} value={mode} disabled={isPaidApiProvider(mode) && !data.paidApiAllowed}>{connectionLabel(mode)}</option>)}</select></label>
@@ -93,15 +95,16 @@ export const AiConnectionSettingsPanel = forwardRef<AiConnectionSettingsHandle, 
           {CONNECTION_MODES.filter((mode) => mode !== "disabled").map((mode) => <label key={mode}><input type="checkbox" checked={draft.comparison.includes(mode)} disabled={isPaidApiProvider(mode) && !data.paidApiAllowed && !draft.comparison.includes(mode)}
             onChange={(event) => edit({ ...draft, comparison: event.target.checked ? [...draft.comparison, mode] : draft.comparison.filter((id) => id !== mode) })} />{connectionLabel(mode)}を比較候補にする</label>)}
         </fieldset>
+        <HelpHeading level={3} label="モデルIDと接続の診断" help={<>接続先で使う正確なモデルIDを入力します。「接続を診断」は保存済みの設定で、モデル一覧や認証状態だけを確かめます。本文は送りません。</>}>モデルIDと接続の診断</HelpHeading>
         {MODEL_FIELDS.map((mode) => <div key={mode}>
           <label>{connectionLabel(mode)}のモデルID<input aria-label={`${connectionLabel(mode)}の接続モデルID`} value={draft.models[mode]} disabled={controlsDisabled} onChange={(event) => edit({ ...draft, models: { ...draft.models, [mode]: event.target.value } })} /></label>
-          {isPaidApiProvider(mode) ? <p>キー：{data.apiKeysConfigured[mode === "openai" || mode === "anthropic" || mode === "gemini" || mode === "xai" || mode === "deepseek" ? mode : "openai"] ? "サーバーに設定あり" : "サーバーに未設定"} ／ サブスクとは別のAPI接続</p> : null}
+          {isPaidApiProvider(mode) ? <p>APIキー：{data.apiKeysConfigured[mode === "openai" || mode === "anthropic" || mode === "gemini" || mode === "xai" || mode === "deepseek" ? mode : "openai"] ? "サーバーに設定あり" : "サーバーに未設定"}</p> : null}
           <button type="button" aria-label={`${connectionLabel(mode)}の接続を診断`} disabled={controlsDisabled || dirtyRef.current || (isPaidApiProvider(mode) && (!data.paidApiAllowed || !paidApiEnabled))} onClick={() => void diagnose(mode)}>接続を診断</button>
         </div>)}
         <label>ローカルLLMのURL<input aria-label="ローカルLLMの接続URL" value={draft.localBaseUrl} disabled={controlsDisabled} onChange={(event) => edit({ ...draft, localBaseUrl: event.target.value })} /></label>
-        <p>ローカルURLはlocalhost / 127.0.0.1 / ::1の/v1のみ。モデルは接続先の正確なIDを入力してください。</p>
+        <p>localhost / 127.0.0.1 / ::1 の /v1 だけ使えます。</p>
+        <HelpHeading level={3} label="別料金のAPI" help={<>APIキー・認証情報・CLIの実行パスはサーバー側で管理します。APIは、サーバーの AI_ENABLE_PAID_API もONの場合だけ利用できます。</>}>別料金のAPI</HelpHeading>
         <label><input type="checkbox" checked={paidApiEnabled} disabled={controlsDisabled || !data.paidApiAllowed} onChange={(event) => { setDiagnostic(null); onPaidApiEnabledChange(event.target.checked); }} />サブスクと別料金のAPI利用・診断を許可する（初期OFF）</label>
-        <p>APIキー・認証情報・CLIの実行パスはサーバー側で管理します。APIはサーバーのAI_ENABLE_PAID_APIもONの場合だけ利用できます。</p>
         {dirtyRef.current ? <p role="status">AI接続設定に未保存の変更があります。診断前に保存してください。</p> : null}
         <button type="button" disabled={controlsDisabled} onClick={() => void save()}>AI接続設定を保存</button>
         <button type="button" disabled={controlsDisabled} onClick={() => { if (window.confirm("AI接続をサーバーの環境設定へ戻しますか？ 未保存の接続設定は破棄されます。")) void save(true); }}>AI接続を環境設定に戻す</button>

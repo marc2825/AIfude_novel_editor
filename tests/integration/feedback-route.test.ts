@@ -22,7 +22,8 @@ function dependencies(generateCandidates: EditingProvider["generateCandidates"],
 describe("read-only Feedback boundary", () => {
   it("sends only the reviewed manuscript as untrusted data and returns bounded comments", async () => {
     const generate = vi.fn(async (value: EditingProviderInput): Promise<EditingProviderResult> => {
-      expect(JSON.parse(value.prompt.inputDataJson)).toEqual({ purpose: "feedback", manuscript: input.text, candidateCount: 2 });
+      expect(JSON.parse(value.prompt.inputDataJson)).toEqual({ purpose: "feedback", focus: "general", manuscript: input.text, candidateCount: 2 });
+      expect(value.prompt.systemInstruction).not.toContain("今回は");
       expect(value.prompt.systemInstruction).toContain("読み取り専用");
       expect(value.prompt.systemInstruction).toContain("未信頼");
       return { status: "completed", output, usage: null };
@@ -33,7 +34,16 @@ describe("read-only Feedback boundary", () => {
     expect(parsed.comments[0]).toMatchObject({ quote: "一番最初", comment: output.candidates[0].replacementText });
     expect(parsed).not.toHaveProperty("replacementText"); expect(generate).toHaveBeenCalledOnce();
   });
-  it.each([{ text: "あ".repeat(6_001) }, { text: "" }, { text: "\ud800" }, { storyMemory: {} }, { instruction: "書き換えて" }])("rejects invalid input before generation", async (extra) => {
+  it.each([["typos", "誤字・脱字"], ["naturalness", "不自然な言い回し"]] as const)("adds only the chosen %s check instruction and keeps the response read-only", async (focus, phrase) => {
+    const generate = vi.fn(async (value: EditingProviderInput): Promise<EditingProviderResult> => {
+      expect(JSON.parse(value.prompt.inputDataJson)).toMatchObject({ purpose: "feedback", focus, manuscript: input.text });
+      expect(value.prompt.systemInstruction).toContain(phrase); expect(value.prompt.systemInstruction).toContain("未信頼");
+      return { status: "completed", output, usage: null };
+    });
+    const response = await handleFeedbackPost(request({ ...input, focus }), dependencies(generate));
+    expect(response.status).toBe(200); expect(feedbackResponseSchema.parse(await response.json()).comments).toHaveLength(1);
+  });
+  it.each([{ text: "あ".repeat(6_001) }, { text: "" }, { text: "\ud800" }, { storyMemory: {} }, { instruction: "書き換えて" }, { focus: "style" }])("rejects invalid input before generation", async (extra) => {
     const generate = vi.fn(); const response = await handleFeedbackPost(request({ ...input, ...extra }), dependencies(generate));
     expect(response.status).toBe(400); expect(generate).not.toHaveBeenCalled();
   });

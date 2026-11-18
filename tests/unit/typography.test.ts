@@ -43,6 +43,20 @@ describe("Japanese structured typography", () => {
     const body: ManuscriptDocument = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "字".repeat(11), marks: [{ type: "ruby", attrs: { base: "字".repeat(11), reading: "じ" } }] }] }] };
     expect(() => publicationText(body, "narou")).toThrow("10文字"); expect(publicationText(body, "kakuyomu")).toContain("じ");
   });
+  it("exports pixiv ruby with the documented tag, refuses emphasis, tag-like text and unsupported readings", () => {
+    const rubyOnly: ManuscriptDocument = { type: "doc", content: [{ type: "paragraph", content: [
+      { type: "text", text: "前" }, { type: "text", text: "葵", marks: [{ type: "ruby", attrs: { reading: "あおい", base: "葵" } }] }, { type: "text", text: "後" },
+    ] }, { type: "paragraph" }, { type: "paragraph", content: [{ type: "text", text: "珈琲", marks: [{ type: "ruby", attrs: { reading: "コーヒー", base: "珈琲" } }] }] }] };
+    const published = publicationText(rubyOnly, "pixiv"); expect(published).toBe("前[[rb:葵 > あおい]]後\n\n[[rb:珈琲 > コーヒー]]");
+    expect(parsePublicationText(published, "pixiv")).toEqual(rubyOnly);
+    expect(() => publicationText(annotatedBody, "pixiv")).toThrow("傍点");
+    const text = (value: string): ManuscriptDocument => ({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: value }] }] });
+    expect(() => publicationText(text("配列[0]"), "pixiv")).toThrow("衝突"); expect(publicationText(text("配列[0]"), "kakuyomu")).toBe("配列[0]");
+    const ruby = (base: string, reading: string): ManuscriptDocument => ({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: base, marks: [{ type: "ruby", attrs: { base, reading } }] }] }] });
+    expect(() => publicationText(ruby("葵", "あ・お"), "pixiv")).toThrow("pixiv"); expect(() => publicationText(ruby("a>b", "えい"), "pixiv")).toThrow("pixiv");
+    expect(publicationText(ruby("pixiv", "ピクシブ"), "pixiv")).toBe("[[rb:pixiv > ピクシブ]]");
+    expect(() => parsePublicationText("[[newpage]]", "pixiv")).toThrow();
+  });
   it("round-trips supported Unicode ruby without splitting graphemes", () => {
     const phrase = fc.array(fc.constantFrom("葵", "🙂", "が", "雲"), { minLength: 1, maxLength: 4 }).map((parts) => parts.join(""));
     fc.assert(fc.property(phrase, phrase, (base, reading) => {
