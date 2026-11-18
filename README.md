@@ -58,4 +58,8 @@ AIの接続先はChatGPT、Claude CLI、Ollama / LM Studio、各社APIから選�
 
 ## ライセンス
 
-Copyright 2026 marc2825。[Apache-2.0](LICENSE)で提供します。[NOTICE](NOTICE) と [第三者ライセンス](docs/THIRD_PARTY_LICENSES.md) も参照してください。外部AIサービスには各社の利用条件が適用されます。
+Copyright 2026 marc2825。[PolyForm Noncommercial License 1.0.0](LICENSE) で提供します。
+
+個人の趣味・学習・研究や、教育機関・非営利団体での利用、非営利目的での改変・再配布ができます。営利目的の利用（会社の業務での利用を含む）は、このライセンスでは許可していません。正確な条件は [LICENSE](LICENSE) を参照してください。
+
+これまでApache-2.0で公開した版は、引き続きApache-2.0の条件で利用できます。[NOTICE](NOTICE) と [第三者ライセンス](docs/THIRD_PARTY_LICENSES.md) も参照してください。外部AIサービスには各社の利用条件が適用されます。

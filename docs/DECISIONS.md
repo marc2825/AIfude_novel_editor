@@ -559,7 +559,7 @@ Status: Accepted（2026-11-13、所有者が「固定だけ外す」方式を選
 
 ## D-046：Apache-2.0と履歴なしの公開ソース
 
-Status: Accepted（2026-11-15、所有者が公開用フォルダの提供、Apache-2.0、著作権者marc2825、新リポジトリ名AIfude_novel_editorを指定）。Task 20.3。
+Status: Accepted（2026-11-15、所有者が公開用フォルダの提供、Apache-2.0、著作権者marc2825、新リポジトリ名AIfude_novel_editorを指定）。Task 20.3。ライセンスはD-048で変更した。
 
 LICENSEに正式なApache-2.0本文、NOTICEに著作権表示、package.jsonにSPDX識別子を置く。npmの誤公開を防ぐ `private: true` は維持する。第三者依存と外部サービスの条件は個別に扱う。
 
@@ -572,3 +572,13 @@ D-044のコミット済みHEADからの書き出しを既定として維持し�
 Status: Accepted（2026-11-15、所有者が開発時のCSP Console Error修正を明示依頼）。Task 20.4。
 
 Reactの開発用デバッグが使うevalを `NODE_ENV === "development"` のときだけCSPへ許可する。本番・test・未設定では許可しない。Console Errorを隠す方法や全環境のCSPを緩める方法は採用しない。保存形式・依存の移行は不要。環境別unit test、開発時Console Error、本番HTTP headerとPWAで検証する。[根拠](https://nextjs.org/docs/app/guides/content-security-policy)。
+
+## D-048：ライセンスをPolyForm Noncommercial 1.0.0へ変更する
+
+Status: Accepted（2026-11-18、所有者が「一旦商用禁止（厳し目）」を指定し、PolyForm Noncommercial License 1.0.0を選択）。Task 20.12。D-046のライセンス部分を置き換える。
+
+LICENSEにPolyForm Noncommercial License 1.0.0の公式本文をそのまま置き、`Required Notice:` の著作権表示はNOTICEに書く。package.jsonのSPDX識別子は `PolyForm-Noncommercial-1.0.0`。`private: true` は維持する。
+
+個人・研究・教育・非営利団体での利用と、非営利目的での改変・再配布を許可し、営利目的の利用は許可しない。改変と再配布も禁じるPolyForm Strictは、利用者が自分用に直すこともできなくなるため採用しない。CC BY-NC-SA 4.0は、Creative Commonsがソフトウェアへの使用を推奨しておらず特許も扱わないため採用しない。
+
+影響：OSIの定義によるオープンソースではなくなる。これまでApache-2.0で公開した版（mainの1939ba5まで）は、入手した人が引き続きApache-2.0で利用できる。著作権者はmarc2825だけで、ほかのコミットはDependabotによる依存バージョンの更新である。ChatGPTのプラン連携の文書は対象を「open-source and locally hosted apps」と書くだけで、ライセンスの条件を示していない。この形態が対象に含まれるかは公開前に確認する。第三者依存のライセンスは変わらない。

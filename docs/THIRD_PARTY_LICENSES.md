@@ -5,7 +5,7 @@
 ## 配布範囲
 
 - 本配布物はAIFUDEのソース・文書・テスト・lockfileとPWAアイコンのみ。node_modules、Nextのbuild、Playwrightブラウザー、Claude CLI、認証情報は含めない。
-- AIFUDEのライセンスは [Apache-2.0](../LICENSE)、著作権表示は [NOTICE](../NOTICE)。第三者パッケージをApache-2.0へ変更するものではない。
+- AIFUDEのライセンスは [PolyForm Noncommercial License 1.0.0](../LICENSE)、著作権表示は [NOTICE](../NOTICE)。2026-11-18より前に公開した版はApache-2.0。第三者パッケージのライセンスを変更するものではない。
 - 実行可能bundle、Docker image、node_modules、ブラウザー、CLIなどを今後配布する場合は、その配布内容ごとに上流のLICENSE / NOTICE、組み込みコード、ソース提供要件を改めて確認する。今回のソース配布の確認を転用しない。
 
 ## 直接依存

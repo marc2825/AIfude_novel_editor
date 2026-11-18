@@ -4,7 +4,7 @@
 
 ## ChatGPT
 
-[ChatGPT plan usage](https://developers.openai.com/siwc/token-sharing-open-source) は、OSS・ローカルアプリから利用者のプランを使う仕組みを説明しています。有料・リモート運用は別の問い合わせ対象です。
+[ChatGPT plan usage](https://developers.openai.com/siwc/token-sharing-open-source) は、OSS・ローカルアプリから利用者のプランを使う仕組みを説明しています。有料・リモート運用は別の問い合わせ対象です。文書は「open-source」の定義や対象ライセンスを示していません。2026-11-18に商用禁止のPolyForm Noncommercialへ変えたため、この形態が対象に含まれるかは未確認です。
 
 [プレビュー制約](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations) に合わせ、実装では `store: false`、`stream: true`、配列の `input`、`instructions` を使います。host IDを保存して認証へ渡す処理も、2026-11-15にコードで確認しました。ストリームはサーバー内で受信し、画面には検証済みの候補だけを返します。
 
@@ -30,6 +30,6 @@
 
 ## 共通の確認
 
-CLI本体や認証情報はソースに同梱しません。Apache-2.0は、外部サービスの利用権や提供元の承認を与えるものではありません。
+CLI本体や認証情報はソースに同梱しません。AIFUDEのライセンス（PolyForm Noncommercial License 1.0.0）は、外部サービスの利用権や提供元の承認を与えるものではありません。
 
 実サービスでは、許可されたテスト用原稿でサインイン・生成・キャンセル・ログアウトを確認します。有料APIの初期OFF、送信先ごとの同意、原稿やトークンをログへ出さない扱いも確認してください。結果は日付・モデル・成否を記録し、原稿・認証情報は残しません。

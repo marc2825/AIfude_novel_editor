@@ -1,7 +1,9 @@
 AIFUDE (合い筆)
-Copyright 2026 marc2825
+Required Notice: Copyright 2026 marc2825 (https://github.com/marc2825/AIfude_novel_editor)
 
-Licensed under the Apache License, Version 2.0. See LICENSE.
+Licensed under the PolyForm Noncommercial License 1.0.0. See LICENSE.
+Versions previously released under the Apache License, Version 2.0 remain
+available under that license.
 
 Third-party dependencies retain their own licenses and notices.
 See docs/THIRD_PARTY_LICENSES.md for the source distribution review.

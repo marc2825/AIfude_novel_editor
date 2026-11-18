@@ -1034,3 +1034,7 @@ Acceptance Criteriaはすべて自動検査で確認した。操作文字の拡�
 太字は警告の2か所だけを残した（23か所→2か所）。UI名は「」で示し、箇条書きの太字ラベルを外した。AI接続の「つながらないとき」は症状と対処の表にした。操作ガイドでは、ツールの分類と選び方を「画面とキーボード」へまとめ、見出しを「選択範囲を直す」「カーソル位置に書く」に合わせた。AI文章挿入の開き方の記述も、新しい分類に合わせて直した。READMEは、起動ファイルがビルドする主語を明示し、ツールの3分類と案内先を分けた。
 
 Pythonの文書検査で、全Markdownの相対リンク80件・見出しアンカー・コードフェンスを確認し、エラー0件。対象6文書でコードブロック・インラインコード・リンク先が変更前と一致し、追加された数値は分類数の「3」だけであることを確認した。コード・テスト・依存は変更していない。仕様書・決定記録・過去の計画・AGENTS.md・skillsは対象外。commit・pushは行わない。
+
+### Task 20.12：商用禁止ライセンスへの変更
+
+2026-11-18の依頼。ライセンスをApache-2.0からPolyForm Noncommercial License 1.0.0へ変える（[D-048](DECISIONS.md#d-048ライセンスをpolyform-noncommercial-100へ変更する)）。LICENSEは公式本文（polyform-licensesの1.0.0タグ、SHA-256 `c0ea4a89…fabbe5`）をそのまま置き、NOTICEに `Required Notice:` の著作権表示と旧版の扱いを書いた。package.jsonの `license`、README、BRANDING、PUBLISHING、THIRD_PARTY_LICENSES、PROVIDER_DISTRIBUTION_REVIEWを更新した。コードと依存は変更していない。commitは行わない。

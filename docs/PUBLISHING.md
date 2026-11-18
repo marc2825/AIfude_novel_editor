@@ -1,11 +1,11 @@
 # 公開準備
 
-公開先は `marc2825/AIfude_novel_editor`、ライセンスはApache-2.0、著作権者はmarc2825です。この文書ではソース公開の手順を扱います。アプリのサーバーは引き続きPC内で使います。
+公開先は `marc2825/AIfude_novel_editor`、ライセンスはPolyForm Noncommercial License 1.0.0（2026-11-18にApache-2.0から変更）、著作権者はmarc2825です。この文書ではソース公開の手順を扱います。アプリのサーバーは引き続きPC内で使います。
 
 ## 公開前に確認すること
 
 - [ ] 素材の権利：`public/icons/source.svg` と派生PNGを配布できることを確認する。SVGと生成コードは調査済みだが、出所の最終確認は所有者が行う。[第三者ライセンス](THIRD_PARTY_LICENSES.md) も確認する。
-- [ ] 外部AIの利用条件：特にClaude CLIを製品から動かす条件、Commercial Terms、認証方法の制限との関係を確認する。[確認記録](PROVIDER_DISTRIBUTION_REVIEW.md) に未解決の項目がある。
+- [ ] 外部AIの利用条件：特にClaude CLIを製品から動かす条件、Commercial Terms、認証方法の制限との関係を確認する。ChatGPTのプラン連携が、商用禁止ライセンスのアプリでも対象になるかも確認する。[確認記録](PROVIDER_DISTRIBUTION_REVIEW.md) に未解決の項目がある。
 - [ ] 実サービスの動作：テスト用原稿でサインイン・生成・キャンセル・ログアウトを確認する。ChatGPTの利用可能モデルと、Claude CLIの対応フラグも調べる。
 - [ ] 実機の操作：Windows / macOSの日本語IME、キーボード、スクリーンリーダー、案内する端末でのPWAと休止復帰を確認する。未確認の項目はプレビューの説明に残す。
 - [ ] 配布内容：原稿・バックアップ・秘密情報・個人メール・旧Git履歴が含まれないことを目視する。自動スキャンだけでは任意名の機密ファイルを判別できない。
