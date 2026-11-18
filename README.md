@@ -1,10 +1,18 @@
 # AIFUDE（合い筆）
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg">
+    <img src="docs/images/logo.svg" alt="AIFUDE（合い筆）のロゴ" width="420">
+  </picture>
+</p>
+
+
 自分で書いた小説を、AIの提案と見比べながら推敲するエディタです。
 
-文章を選び、指示を出し、候補と差分を確認して採用します。AIを待つ間も執筆を続けられ、採用した変更は1回のUndoで戻せます。作品・章の管理、自動保存、バックアップ、ルビ・傍点にも対応しています。
+洗練させたい部分の文章を選び、指示を出し、候補と差分を確認して採用します。作品・章の管理、自動保存、バックアップ、ルビ・傍点にも対応しています。
 
-**現在はプレビュー版です。** 主な検証環境はLinux / WSLです。実機の日本語IME、実AIアカウント、スマホでの操作には未確認の項目があります。詳しくは [検査と公開前の残件](docs/PUBLISHING.md) を参照してください。
+**現在はプレビュー版です。** 
 
 ## 起動する
 
@@ -54,6 +62,7 @@ AIの接続先はChatGPT、Claude CLI、Ollama / LM Studio、各社APIから選�
 - [AIの接続方法](docs/AI_CONNECTIONS.md)：接続先、認証、モデル、料金設定
 - [開発手順](docs/DEVELOPMENT.md)：環境構築と検査コマンド
 - [要件](docs/REQUIREMENTS.md)・[設計](docs/ARCHITECTURE.md)・[実装計画](docs/IMPLEMENTATION_PLAN.md)
+- [ロードマップ](ROADMAP.md)：未確認の項目と今後追加したい機能
 - [公開準備](docs/PUBLISHING.md)・[セキュリティ上の問題の報告](SECURITY.md)
 
 ## ライセンス

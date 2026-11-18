@@ -11,6 +11,19 @@
 | npmパッケージ名 | aifude |
 | GitHubリポジトリ | AIfude_novel_editor |
 
+## ロゴ
+
+筆の穂先を、人の文章を表す緑と、AIの提案を表す金の2色に分けて描いています。2つが1点で合わさる形で「合い筆」を表します。文字は「AI」を金、「FUDE」を墨色にしています。
+
+| ファイル | 用途 |
+|---|---|
+| [logo.svg](images/logo.svg) | 明るい背景用のロゴ（マーク・AIFUDE・合い筆） |
+| [logo-dark.svg](images/logo-dark.svg) | 暗い背景用のロゴ |
+| [logo-mark.svg](images/logo-mark.svg)・[logo-mark-dark.svg](images/logo-mark-dark.svg) | マークだけ |
+| [public/icons/source.svg](../public/icons/source.svg) | アプリアイコンの元データ。PNGは `scripts/build-icons.mjs` で生成する |
+
+マークと「AIFUDE」の字形は、このリポジトリのために描いた図形です。「合い筆」の字形は、Noto Serif CJK JP（SIL Open Font License 1.1）の輪郭をパスに変換しています。主な色は緑 `#326659`、墨 `#293b37`、金 `#c9a24a`。アプリアイコンの背景は、PWAのテーマ色に合わせて `#356456` を使います。マークは、OSが円形に切り抜いても欠けない中央の範囲に収めています。
+
 ## 内部名を変えない理由
 
 保存先の名前まで変えると、既存の原稿や認証情報が見つからなくなります。そのため、次の識別子は従来の名前を使います。

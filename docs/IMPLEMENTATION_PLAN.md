@@ -1058,6 +1058,19 @@ Pythonの文書検査で、全Markdownの相対リンク80件・見出しアン�
 
 Task 20.6で開発サーバーのInsightバッジにより失敗した標準E2E 2件も成功した。ブラウザーの共有ライブラリは検査用の `LD_LIBRARY_PATH` と `NOVEL_WEBKIT_EXECUTABLE` で補った。GitHub上のCIはpush後に確認する。
 
+### Task 20.9：ロードマップとREADMEのteaser figure欄
+
+2026-11-17の依頼。READMEから外した未確認項目（実機の日本語IME、実AIアカウント、スマホでの操作など）と、今後追加したい機能を `ROADMAP.md` に簡潔にまとめる。READMEにはteaser figure用の欄をコメントで用意し、文書一覧からROADMAPへ案内する。内容は既存の [公開準備](PUBLISHING.md)、[テスト仕様](TESTING.md)、本計画の将来Gate・Phase 17、[日本語・モバイル拡張の計画](roadmap/IMPLEMENTATION_PLAN.md) から集め、新しい予定を加えない。コード・依存は変更しない。commitは行わない。teaser figureの欄は、その後の所有者の編集でREADMEから削除された。
+
+### Task 20.10：ロゴの作成
+
+2026-11-18の依頼。筆の穂先を人（緑）とAI（金）の2色に分けたマークと、「AIFUDE」「合い筆」の字形でロゴを作り、`docs/images/` に明るい背景用・暗い背景用・マーク単体のSVGを置いた。READMEの冒頭にロゴを表示し、GitHubのダークモードでは暗い背景用に切り替える。由来と色は [名称と互換性](BRANDING.md#ロゴ) に記載した。PWAのアイコン、コード、依存は変更していない。ロゴは幅270・528px、マークは16〜140px、アプリアイコン候補は24〜128pxで、明るい背景と暗い背景の表示をChromiumで目視確認した。commitは行わない。
+
+### Task 20.11：アプリアイコンの差し替えとデモ動画の予定
+
+2026-11-18の依頼。`public/icons/source.svg` をTask 20.10の筆のマークに差し替え、`scripts/build-icons.mjs` で192・512・180pxのPNGを作り直した。manifestは512pxをmaskableにも使うため、背景を全面に塗り、マークを中央の安全範囲（半径40%）に収めた。背景色はテーマ色 `#356456` のまま。円形・角丸に切り抜いた表示と16〜192pxの縮小表示をChromiumで目視確認した。ROADMAPの「その他」にデモ動画の準備と撮影を加え、素材の説明をBRANDING・THIRD_PARTY_LICENSES・PUBLISHINGに反映した。manifestとコードは変更していない。commitは行わない。
+
 ### Task 20.12：商用禁止ライセンスへの変更
 
 2026-11-18の依頼。ライセンスをApache-2.0からPolyForm Noncommercial License 1.0.0へ変える（[D-048](DECISIONS.md#d-048ライセンスをpolyform-noncommercial-100へ変更する)）。LICENSEは公式本文（polyform-licensesの1.0.0タグ、SHA-256 `c0ea4a89…fabbe5`）をそのまま置き、NOTICEに `Required Notice:` の著作権表示と旧版の扱いを書いた。package.jsonの `license`、README、BRANDING、PUBLISHING、THIRD_PARTY_LICENSES、PROVIDER_DISTRIBUTION_REVIEWを更新した。コードと依存は変更していない。commitは行わない。
+

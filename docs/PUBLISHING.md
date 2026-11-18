@@ -4,7 +4,7 @@
 
 ## 公開前に確認すること
 
-- [ ] 素材の権利：`public/icons/source.svg` と派生PNGを配布できることを確認する。SVGと生成コードは調査済みだが、出所の最終確認は所有者が行う。[第三者ライセンス](THIRD_PARTY_LICENSES.md) も確認する。
+- [ ] 素材の権利：`public/icons/source.svg` と派生PNG、`docs/images/` のロゴを配布できることを確認する。2026-11-18に作り直した図形で、「合い筆」の字形はNoto Serif CJK JP（OFL 1.1）に由来する。最終確認は所有者が行う。[第三者ライセンス](THIRD_PARTY_LICENSES.md) も確認する。
 - [ ] 外部AIの利用条件：特にClaude CLIを製品から動かす条件、Commercial Terms、認証方法の制限との関係を確認する。ChatGPTのプラン連携が、商用禁止ライセンスのアプリでも対象になるかも確認する。[確認記録](PROVIDER_DISTRIBUTION_REVIEW.md) に未解決の項目がある。
 - [ ] 実サービスの動作：テスト用原稿でサインイン・生成・キャンセル・ログアウトを確認する。ChatGPTの利用可能モデルと、Claude CLIの対応フラグも調べる。
 - [ ] 実機の操作：Windows / macOSの日本語IME、キーボード、スクリーンリーダー、案内する端末でのPWAと休止復帰を確認する。未確認の項目はプレビューの説明に残す。

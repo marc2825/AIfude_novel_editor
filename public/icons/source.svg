@@ -1,7 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <rect width="512" height="512" fill="#356456"/>
-  <rect x="126" y="98" width="236" height="316" rx="18" fill="#fafbf7"/>
-  <path d="M172 163h118M172 211h118M172 259h76" stroke="#356456" stroke-width="14" stroke-linecap="round"/>
-  <path d="m270 352 17-64 93-93 47 47-93 93z" fill="#d9b866" stroke="#356456" stroke-width="10" stroke-linejoin="round"/>
-  <path d="m270 352 17-64 47 47z" fill="#356456"/>
+  <!-- AIFUDE mark: a brush tip split into human ink and AI gold. Kept inside the maskable safe zone (radius 40%). -->
+  <g transform="translate(262.75 247.96) rotate(40) scale(2.1)">
+    <rect x="-10" y="-84" width="20" height="80" rx="10" fill="#fffefa"/>
+    <rect x="-15" y="-16" width="30" height="21" rx="6" fill="#cfe0d8"/>
+    <path d="M-15 4 C-24 24 -20 54 0 94 C3 64 3 32 -1.5 4 Z" fill="#fffefa"/>
+    <path d="M2.5 4 C7 32 4 64 0 94 C20 54 24 24 15 4 Z" fill="#e3c676"/>
+  </g>
 </svg>
