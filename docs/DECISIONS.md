@@ -582,3 +582,12 @@ LICENSEにPolyForm Noncommercial License 1.0.0の公式本文をそのまま置�
 個人・研究・教育・非営利団体での利用と、非営利目的での改変・再配布を許可し、営利目的の利用は許可しない。改変と再配布も禁じるPolyForm Strictは、利用者が自分用に直すこともできなくなるため採用しない。CC BY-NC-SA 4.0は、Creative Commonsがソフトウェアへの使用を推奨しておらず特許も扱わないため採用しない。
 
 影響：OSIの定義によるオープンソースではなくなる。これまでApache-2.0で公開した版（mainの1939ba5まで）は、入手した人が引き続きApache-2.0で利用できる。著作権者はmarc2825だけで、ほかのコミットはDependabotによる依存バージョンの更新である。ChatGPTのプラン連携の文書は対象を「open-source and locally hosted apps」と書くだけで、ライセンスの条件を示していない。この形態が対象に含まれるかは公開前に確認する。第三者依存のライセンスは変わらない。
+
+## D-049：修正版のない開発依存の脆弱性を個別に除外する
+
+Status: Accepted（2026-11-18、所有者が「この脆弱性だけ除外」を選択）。Task 20.13。
+
+2026-11-17に更新された [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)（`picomatch` のReDoS、high）で、CIの `pnpm audit --audit-level=moderate` が失敗した。対象は `picomatch` 4.0.7以下で、修正版はない。経路は `eslint-config-next` のlint用開発依存（2.3.2と4.0.7）だけで、アプリの実行時やbuild結果には含まれない。
+
+このGHSAだけを `package.json` の `pnpm.auditConfig.ignoreGhsas` で除外する。監査の対象範囲と重大度の基準は変えず、ほかの脆弱性は開発依存を含めて引き続きCIで検出する。CIを本番依存だけの監査に変える案は検出範囲が広く減るため、修正を待つ案はその間のbuild・E2Eが止まるため採用しない。修正版が公開されたら依存を更新し、除外を外す。
+

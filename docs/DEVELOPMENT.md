@@ -29,6 +29,8 @@ pnpm test:e2e:sync
 
 `check` は型検査・ESLint・Vitestを実行します。個別には `pnpm typecheck`、`pnpm lint`、`pnpm test` を使います。標準E2Eにはモバイル幅、PWAにはChromium / WebKit、同期にはローカルのテスト用サーバーを使います。
 
+`pnpm audit` では、`picomatch` の脆弱性 [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) だけを `package.json` の `pnpm.auditConfig.ignoreGhsas` で除外しています。lint用の開発依存（`eslint-config-next`）経由でしか使われず、修正版がまだないためです。修正版が出たら依存を更新し、この除外を外してください。
+
 buildと各E2Eは同じ `.next` を使うため、順番に実行してください。ランチャー試験は3000番ポートを使います。原稿を保存して開発サーバーを止めるか、別の検証環境で実行します。実APIキーや実原稿は自動テストへ渡しません。実機IMEなどの手動項目は [テスト仕様](TESTING.md) にあります。
 
 ### よくある警告

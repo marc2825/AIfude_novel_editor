@@ -1074,3 +1074,7 @@ Task 20.6で開発サーバーのInsightバッジにより失敗した標準E2E 
 
 2026-11-18の依頼。ライセンスをApache-2.0からPolyForm Noncommercial License 1.0.0へ変える（[D-048](DECISIONS.md#d-048ライセンスをpolyform-noncommercial-100へ変更する)）。LICENSEは公式本文（polyform-licensesの1.0.0タグ、SHA-256 `c0ea4a89…fabbe5`）をそのまま置き、NOTICEに `Required Notice:` の著作権表示と旧版の扱いを書いた。package.jsonの `license`、README、BRANDING、PUBLISHING、THIRD_PARTY_LICENSES、PROVIDER_DISTRIBUTION_REVIEWを更新した。コードと依存は変更していない。commitは行わない。
 
+### Task 20.13：修正版のない開発依存の脆弱性によるCI失敗
+
+2026-11-18、push後のCIで `pnpm audit` が `picomatch` の [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) により失敗した。修正版がないため、所有者の選択によりこのGHSAだけを `pnpm.auditConfig.ignoreGhsas` で除外した（[D-049](DECISIONS.md#d-049修正版のない開発依存の脆弱性を個別に除外する)）。理由と除外を外す条件は [開発手順](DEVELOPMENT.md) に書いた。ローカルで `pnpm audit --audit-level=moderate` が終了コード0、frozen installが成功することを確認した。lockfile・コード・ほかの依存は変更していない。
+
