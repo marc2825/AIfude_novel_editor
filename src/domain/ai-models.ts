@@ -21,7 +21,7 @@ function configuredModel<const Provider extends string>(providerId: Provider, di
   });
 }
 export const CONFIGURED_CLOUD_MODELS = Object.freeze([
-  configuredModel("claude", "Claudeサブスク（公式CLI）"),
+  configuredModel("claude", "Claudeサブスク（公式CLI・実験的）"),
   configuredModel("anthropic", "Claude API"),
   configuredModel("gemini", "Gemini API"),
   configuredModel("xai", "Grok API"),
@@ -39,7 +39,7 @@ export const CHATGPT_MODEL_DEFINITION: Readonly<{
 }> = Object.freeze({
   capabilities: Object.freeze({ responsesApi: true, structuredOutputs: true, textInput: true, textOutput: true }),
   description: "ChatGPTの利用枠を使用します。モデルはサーバー設定とアカウントの利用可否に従います。",
-  displayName: "ChatGPTサブスク",
+  displayName: "ChatGPTサブスク（実験的）",
   id: CHATGPT_MODEL_ID,
   providerId: CHATGPT_PROVIDER_ID,
   selectable: false,
@@ -73,12 +73,12 @@ export const LOCAL_LLM_MODEL_DEFINITION: Readonly<{
 });
 
 export const AI_PROVIDER_DEFINITIONS = Object.freeze([
-  Object.freeze({ displayName: "Claudeサブスク", externalDataTransfer: true, id: "claude" }),
+  Object.freeze({ displayName: "Claudeサブスク（実験的）", externalDataTransfer: true, id: "claude" }),
   Object.freeze({ displayName: "Claude API", externalDataTransfer: true, id: "anthropic" }),
   Object.freeze({ displayName: "Gemini API", externalDataTransfer: true, id: "gemini" }),
   Object.freeze({ displayName: "Grok API", externalDataTransfer: true, id: "xai" }),
   Object.freeze({ displayName: "DeepSeek API", externalDataTransfer: true, id: "deepseek" }),
-  Object.freeze({ displayName: "ChatGPTサブスク", externalDataTransfer: true, id: CHATGPT_PROVIDER_ID }),
+  Object.freeze({ displayName: "ChatGPTサブスク（実験的）", externalDataTransfer: true, id: CHATGPT_PROVIDER_ID }),
   Object.freeze({
     displayName: "ローカルLLM",
     externalDataTransfer: false,

@@ -264,7 +264,8 @@ export const WorkspaceSettings = forwardRef<WorkspaceSettingsHandle, WorkspaceSe
           <p>利用するAPIのキーとモデルはサーバー側で設定してください。</p>
         </section>
         {[aiRuntime, ...(aiRuntime.comparisonProviders ?? [])].some((provider) => provider.providerId === "claude") ? <section aria-labelledby="claude-connection-title">
-          <h2 id="claude-connection-title">Claudeサブスク接続</h2>
+          <h2 id="claude-connection-title">Claudeサブスク接続（実験的）</h2>
+          <p>提供元の利用条件を確認中の実験的な機能です。</p>
           <p>このPCの公式Claude CLIへ事前ログインして使用します。接続手順はREADMEに記載しています。未ログイン・利用枠超過の場合は失敗を表示します。</p>
           <p>サブスク枠だけで利用する場合は、Claudeアカウント側の追加使用量をOFFにしてください。</p>
         </section> : null}

@@ -1078,3 +1078,11 @@ Task 20.6で開発サーバーのInsightバッジにより失敗した標準E2E 
 
 2026-11-18、push後のCIで `pnpm audit` が `picomatch` の [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) により失敗した。修正版がないため、所有者の選択によりこのGHSAだけを `pnpm.auditConfig.ignoreGhsas` で除外した（[D-049](DECISIONS.md#d-049修正版のない開発依存の脆弱性を個別に除外する)）。理由と除外を外す条件は [開発手順](DEVELOPMENT.md) に書いた。ローカルで `pnpm audit --audit-level=moderate` が終了コード0、frozen installが成功することを確認した。lockfile・コード・ほかの依存は変更していない。
 
+### Task 20.14：ClaudeとChatGPTの利用条件の再確認
+
+2026-11-18の依頼。ClaudeとChatGPTの公式文書を再確認し、AIFUDEの実装と照合した結果を [外部AIサービスの配布前確認](PROVIDER_DISTRIBUTION_REVIEW.md) にまとめた。どちらも公開文書だけでは適合を確定できない。ChatGPTは「open-source」の定義がなく、商用禁止ライセンスでの対象可否が未確定。ClaudeはCommercial Termsの要否、認証方法の「制限」、`claude -p` の自動実行の扱いが未確定。OpenAIの利用規約ページと問い合わせフォームは自動取得できず未読。コードは変更していない。commitは行わない。
+
+### Task 20.15：サブスクリプション連携を実験的な機能として明記
+
+2026-11-18の依頼（[D-050](DECISIONS.md#d-050chatgptとclaude-cliのサブスクリプション連携を実験的な機能とする)）。接続先名を「ChatGPTサブスク（実験的）」「Claudeサブスク（実験的）」「Claudeサブスク（公式CLI・実験的）」に変え、ChatGPTとClaudeの接続設定に利用条件を確認中である旨を表示した。README、AI接続ガイド、ROADMAP、配布前確認にも反映した。連携の処理と初期設定は変更していない。`pnpm check`（1,088テスト）と `pnpm test:e2e`（105件）が成功した。commitは行わない。
+

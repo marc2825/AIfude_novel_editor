@@ -6,8 +6,8 @@
 
 | 接続ID | 接続先 | 必要な設定 |
 |---|---|---|
-| `chatgpt` | ChatGPTの利用枠 | `CHATGPT_MODEL`、画面からサインイン |
-| `claude` | 公式Claude CLI | `CLAUDE_MODEL`、CLIでの事前ログイン |
+| `chatgpt` | ChatGPTの利用枠（実験的） | `CHATGPT_MODEL`、画面からサインイン |
+| `claude` | 公式Claude CLI（実験的） | `CLAUDE_MODEL`、CLIでの事前ログイン |
 | `local` | Ollama / LM Studio | `LOCAL_LLM_BASE_URL`、`LOCAL_LLM_MODEL` |
 | `openai` | OpenAI API | `OPENAI_API_KEY`、`OPENAI_MODEL` |
 | `anthropic` | Claude API | `ANTHROPIC_API_KEY`、`ANTHROPIC_MODEL` |
@@ -24,6 +24,8 @@ APIの料金は各社のサブスクリプション契約と別です。有料AP
 Gemini・Grok・DeepSeekのサブスクリプション接続は未対応です。利用できるのは上表のAPI方式です。CLIを含む外部サービスの利用条件と未確認事項は [配布前の確認](PROVIDER_DISTRIBUTION_REVIEW.md) にまとめています。
 
 ## ChatGPT
+
+提供元の利用条件を確認中の実験的な機能です。確認の状況は [配布前の確認](PROVIDER_DISTRIBUTION_REVIEW.md) を参照してください。
 
 APIキーは不要です。公式の [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source) を使い、自分のアカウントの利用枠で生成します。
 
@@ -45,6 +47,8 @@ CHATGPT_MODEL=gpt-6.1-sol
 「ChatGPTの接続を解除」はローカルのトークンを削除し、提供元にも失効を要求します。遠隔での失効を確認できない場合は画面に表示します。host IDと登録情報は再認証用に残ります。アプリへの許可はChatGPT側の接続設定からも管理してください。利用枠は他のアプリと共有されます。
 
 ## Claude CLI
+
+提供元の利用条件を確認中の実験的な機能です。確認の状況は [配布前の確認](PROVIDER_DISTRIBUTION_REVIEW.md) を参照してください。
 
 [公式Claude CLI](https://code.claude.com/docs/en/setup) を別途導入し、アプリ専用のディレクトリでログインします。Linux / WSLでの例です。
 

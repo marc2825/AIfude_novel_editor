@@ -46,7 +46,7 @@ pnpm dev
 
 AIツールは「選択範囲を直す」「カーソル位置に書く」「語句を調べる」の3種類に分かれています。ツールごとの使い方は [操作ガイド](docs/USAGE.md) にまとめています。
 
-AIの接続先はChatGPT、Claude CLI、Ollama / LM Studio、各社APIから選べます。有料APIは初期状態で無効です。認証や送信先の設定は [AIの接続方法](docs/AI_CONNECTIONS.md) を参照してください。
+AIの接続先はChatGPT、Claude CLI、Ollama / LM Studio、各社APIから選べます。ChatGPTとClaude CLIのサブスクリプション連携は、提供元の利用条件を確認中の実験的な機能です。有料APIは初期状態で無効です。認証や送信先の設定は [AIの接続方法](docs/AI_CONNECTIONS.md) を参照してください。
 
 ## 保存とバックアップ
 

@@ -20,7 +20,8 @@ export function ChatGptConnectionPanel({ connection, disabled }: Readonly<{ conn
     return () => { if (typeof element.close === "function") element.close(); };
   }, [welcome]);
   return <section aria-labelledby="chatgpt-connection-title">
-    <h2 id="chatgpt-connection-title">ChatGPTサブスク連携</h2>
+    <h2 id="chatgpt-connection-title">ChatGPTサブスク連携（実験的）</h2>
+    <p>提供元の利用条件を確認中の実験的な機能です。</p>
     <p>契約済みのChatGPT利用枠または利用可能なクレジットを使います。他のアプリと利用枠を共有します。</p>
     <p role="status">{connection.connecting ? "ChatGPTで認証してください。エディタはそのまま利用できます。" : connection.status?.connected
       ? `接続済み${connection.status.email ? `：${connection.status.email}` : ""}` : "未接続"}</p>
