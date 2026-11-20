@@ -351,6 +351,14 @@ paragraphのcontentを複数text nodeへ拡張し、`ruby {reading, base}` ま�
 
 旧v1〜v5は従来の単一plain text node スキーマで検証してからv6へ移す。既存の`｜…《…》`のような文字列は自動的に注釈へ変換しない。初期エディタだけに構造化bodyを渡し、保存時のsetContentはしない。投稿用はサイトの制限に合う範囲だけを変換し、完全復元にはJSONを使用する。DB バージョンは4のまま。詳細は`roadmap/ADR_TYPOGRAPHY_AND_CREATIVE_TOOLS.md`。
 
+## Phase 22 / IndexedDB v6・シークレット作品
+
+DB v5→v6では `workspace-vault` storeだけを追加し、既存のrecordを書き換えない。`vault` キーに1件：`schemaVersion`、KDF（PBKDF2・SHA-256・回数・salt）、包んだデータ鍵（IV・暗号文）、作成・更新日時。
+
+シークレット作品は、通常のWorkspaceSnapshot v6と同じ構造の「シェル」として保存する。作品名・本文・章名・アウトライン・作品メモ・執筆設定・文体の指示を仮の値に置き換え、本物は任意項目 `secret`（`{ sealed: 1, kind: "workspace", meta: { projectId, documentId }, iv, data }`）に暗号化して入れる。IDの割り当て・保存version・章の順序・日時などはシェルに平文で残すため、保存versionの比較・作品の切替・ごみ箱・保存履歴の処理は通常の作品と同じ。保存履歴とごみ箱の記録もシェルを持つ。
+
+`secret` 付きのrecordは旧版のアプリでは読めない。全作品バックアップv2は、シークレット作品を含む場合に任意項目 `secretVault`（包んだデータ鍵）を持つ。コピー復元ではIDが変わるため、復元前に復号し、複製してから、この端末の鍵で暗号化し直す。
+
 ## Phase 6 / IndexedDB v5・SyncPayload v1
 
 現在のWorkspaceSnapshotはv6。DB v4→v5では`workspace-sync` storeだけを追加し、原稿recordを上書きしない。作品UUIDごとの同期状態はversion/sequence/deviceId/enabled/remoteRevision/pending/lastUploaded/conflict/copies/lastError。pendingは不変のoperation ID付きであり、送信後の追加入力と混ぜない。同期CASはWeb Locksに依存しない。

@@ -60,7 +60,7 @@ it("migrates database v4 without rewriting a single stored workspace byte", asyn
   } });
   const snapshot = createWorkspaceFixture(); await old.put("workspaces", snapshot, snapshot.project.id); old.close();
   const upgraded = await openWorkspaceDatabase(); databases.push(upgraded);
-  expect(upgraded.version).toBe(5); expect(await upgraded.get("workspaces", snapshot.project.id)).toEqual(snapshot); expect(await upgraded.count("workspace-sync")).toBe(0);
+  expect(upgraded.version).toBe(6); expect(await upgraded.get("workspaces", snapshot.project.id)).toEqual(snapshot); expect(await upgraded.count("workspace-sync")).toBe(0);
 });
 
 it("keeps a pending request immutable through later edits and late/duplicate acknowledgements", async () => {

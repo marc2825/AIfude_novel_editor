@@ -5,6 +5,7 @@ import { authoringProfileSchema, emptyAuthoringProfile } from "./authoring-profi
 import { AI_MODEL_PREFERENCE_AUTOMATIC } from "./ai-models";
 import { AI_EXTERNAL_CONSENT_POLICY_VERSION } from "./limits";
 import { EMPTY_STORY_MEMORY, storyMemorySchema } from "./story-memory";
+import { sealedRecordSchema } from "./sealed-record";
 
 export const WORKSPACE_SCHEMA_VERSION = 6 as const;
 
@@ -250,6 +251,8 @@ export const persistedDocumentSchema = manuscriptDocumentSchema;
 const annotatedChapterSchema = chapterSchema.extend({ body: persistedDocumentSchema });
 export const workspaceSnapshotSchema = workspaceSnapshotV4Base.extend({
   schemaVersion: z.literal(WORKSPACE_SCHEMA_VERSION), project: projectSchema, chapter: annotatedChapterSchema, additionalChapters: z.array(annotatedChapterSchema).max(199),
+  // Present only on the stored "shell" of a secret work (see domain/secret.ts).
+  secret: sealedRecordSchema.optional(),
 }).superRefine(checkWorkspaceReferences);
 
 export type PersistedDocument = z.infer<typeof persistedDocumentSchema>;

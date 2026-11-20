@@ -73,7 +73,7 @@ describe("WorkspaceRepository", () => {
     const old = await openDB(WORKSPACE_DATABASE_NAME, 1, { upgrade(db) { db.createObjectStore(WORKSPACES_STORE_NAME); } });
     await old.put(WORKSPACES_STORE_NAME, legacy, legacy.project.id); old.close();
     const { database, repository } = await openTestRepository();
-    expect(database.version).toBe(5); expect(database.objectStoreNames.contains(WORKSPACE_FILES_STORE_NAME)).toBe(true);
+    expect(database.version).toBe(6); expect(database.objectStoreNames.contains(WORKSPACE_FILES_STORE_NAME)).toBe(true); expect(database.objectStoreNames.contains("workspace-vault")).toBe(true);
     expect(await database.get(WORKSPACES_STORE_NAME, legacy.project.id)).toEqual(legacy);
     expect(await repository.listFiles()).toEqual([{ projectId: legacy.project.id, title: legacy.project.title }]);
   });

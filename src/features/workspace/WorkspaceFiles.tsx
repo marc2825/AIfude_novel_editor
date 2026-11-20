@@ -20,13 +20,14 @@ type Props = Readonly<{
   onSave: () => Promise<WorkspaceActionResult>;
   onSwitch: (projectId: string) => Promise<WorkspaceActionResult>;
   onManage?: () => void;
+  confirmExport?: () => boolean;
 }>;
 
 function tabPosition(index: number): CSSProperties & { "--file-row": number } {
   return { gridColumn: index + 1, "--file-row": index + 1 };
 }
 
-export function WorkspaceFiles({ uiState, activeProjectId, disabled, files, getCurrentSnapshot, onNew, onOpen, onSave, onSwitch, onManage }: Props) {
+export function WorkspaceFiles({ uiState, activeProjectId, disabled, files, getCurrentSnapshot, onNew, onOpen, onSave, onSwitch, onManage, confirmExport }: Props) {
   const [closedIds, setClosedIds] = useState<readonly string[]>(() => uiState?.closedProjects() ?? []);
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -101,6 +102,7 @@ export function WorkspaceFiles({ uiState, activeProjectId, disabled, files, getC
   }
 
   async function download() {
+    if (confirmExport && !confirmExport()) return { ok: false, message: "書き出しを取り消しました。" };
     const result = await onSave();
     if (!result.ok) return result;
     const snapshot = getCurrentSnapshot();

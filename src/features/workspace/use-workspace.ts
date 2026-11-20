@@ -18,10 +18,12 @@ import {
   type WorkspaceSettingsInput,
   type WorkspaceSnapshot,
 } from "../../domain/workspace";
-import { TrashRepository, TrashVersionConflictError, type TrashEntry } from "../../persistence/trash-repository";
+import { TrashVersionConflictError, type TrashEntry } from "../../persistence/trash-repository";
 import { orderedChapters, withChapters } from "../../domain/chapters";
 import { WritingHistoryRepository, createHistoryEntry, type WritingHistoryEntry } from "../../persistence/writing-history";
-import { LibraryBackupRepository, type LibraryBackup } from "../../persistence/library-backup";
+import { LibraryBackupRepository, libraryBackupHasSecrets, type LibraryBackup, type SecretImportCodec } from "../../persistence/library-backup";
+import { SecretKeyring, SecretLockedError, SecretVaultRepository, SecretWorkspaceRepository } from "../../persistence/secret-workspace";
+import { changeSecretPassword as rewrapSecretVault, createSecretVault, openWorkspace, sealWorkspace, SecretPasswordError, unlockSecretVault } from "../../persistence/secret-vault";
 import { AI_EXTERNAL_CONSENT_POLICY_VERSION } from "../../domain/limits";
 import { storyMemoriesEqual, type StoryMemory } from "../../domain/story-memory";
 import { openWorkspaceDatabase } from "../../persistence/indexeddb";
@@ -32,7 +34,6 @@ import {
 import {
   type StoredWorkspaceReference,
   type WorkspaceFileInfo,
-  WorkspaceRepository,
   WorkspaceVersionConflictError,
 } from "../../persistence/workspace-repository";
 import {
@@ -55,6 +56,7 @@ export type WorkspaceSessionState =
   | Readonly<{ phase: "hydrating" }>
   | Readonly<{ phase: "load-error" }>
   | Readonly<{ phase: "deleted"; files: readonly WorkspaceFileInfo[] }>
+  | Readonly<{ phase: "locked"; access: WorkspaceAccess; projectId: string; files: readonly WorkspaceFileInfo[] }>
   | Readonly<{
       access: Exclude<WorkspaceAccess, "editable" | "conflict">;
       phase: "unavailable";
@@ -67,12 +69,20 @@ export type WorkspaceSessionState =
       saveStatus: SaveCoordinatorStatus;
       workspace: WorkspaceSnapshot;
       files: readonly WorkspaceFileInfo[];
+      /** The open work is stored encrypted. */
+      secret?: boolean;
     }>;
 
 export type WorkspaceActionResult = Readonly<{
   message?: string;
   ok: boolean;
+  /** A secret work is locked; the user has to unlock first. */
+  locked?: boolean;
+  /** A backup with secret works needs the password it was made with. */
+  needsPassword?: boolean;
 }>;
+const SECRET_SYNC_MESSAGE = "シークレット作品は端末同期と移行ファイルを使えません。";
+function missingRepository(): never { throw new Error("保存先がありません。"); }
 
 const initialState: WorkspaceSessionState = { phase: "hydrating" };
 
@@ -115,7 +125,12 @@ export function useWorkspace() {
   const modelPreferenceMutationRef = useRef(false);
   const operationRef = useRef<WorkspaceOperation>("idle");
   const persistedReferenceRef = useRef<StoredWorkspaceReference | null>(null);
-  const repositoryRef = useRef<WorkspaceRepository | null>(null);
+  const repositoryRef = useRef<SecretWorkspaceRepository | null>(null);
+  const [keyring] = useState(() => new SecretKeyring());
+  const [secretUnlocked, setSecretUnlocked] = useState(false);
+  const [vaultExists, setVaultExists] = useState(false);
+  const lockedProjectRef = useRef<string | null>(null);
+  useEffect(() => keyring.subscribe(() => setSecretUnlocked(keyring.unlocked)), [keyring]);
   const snapshotRef = useRef<WorkspaceSnapshot | null>(null);
   const settingsSaveRef = useRef(false);
   const [state, setState] = useState<WorkspaceSessionState>(initialState);
@@ -192,7 +207,7 @@ export function useWorkspace() {
             (JSON.stringify(previous.chapter.body) !== JSON.stringify(savedSnapshot.chapter.body) ||
              JSON.stringify(previous.project.storyMemory) !== JSON.stringify(savedSnapshot.project.storyMemory))) {
           try {
-            await new WritingHistoryRepository(databaseRef.current).add(createHistoryEntry(previous, "自動保存前の状態", "autosave"));
+            await repository.history().add(createHistoryEntry(previous, "自動保存前の状態", "autosave"));
             if (mountedRef.current) setHistoryWarning(null);
           } catch {
             if (mountedRef.current) setHistoryWarning("本文は保存されましたが、保存履歴を記録できませんでした。");
@@ -265,10 +280,22 @@ export function useWorkspace() {
           return;
         }
 
-        const repository = new WorkspaceRepository(openedDatabase);
-        let workspace = await repository.load();
+        const repository = new SecretWorkspaceRepository(openedDatabase, keyring);
+        const vault = await new SecretVaultRepository(openedDatabase).get();
+        if (active) setVaultExists(vault !== null);
+        let workspace: WorkspaceSnapshot | null = null;
+        let lockedProjectId: string | null = null;
+        try { workspace = await repository.load(); }
+        catch (error: unknown) { if (!(error instanceof SecretLockedError)) throw error; lockedProjectId = error.projectId; }
         const storedFiles = await repository.listFiles();
         const access = accessForLock(acquiredLease.status);
+        if (lockedProjectId !== null) {
+          if (!active) { acquiredLease.release(); await acquiredLease.released.catch(() => undefined); openedDatabase.close(); return; }
+          databaseRef.current = openedDatabase; leaseRef.current = acquiredLease; repositoryRef.current = repository; accessRef.current = access;
+          lockedProjectRef.current = lockedProjectId;
+          setState({ phase: "locked", access, projectId: lockedProjectId, files: storedFiles });
+          return;
+        }
         if (workspace === null && storedFiles.length > 0 && access === "editable") {
           workspace = await repository.activateFile(null, storedFiles[0].projectId);
         }
@@ -341,8 +368,9 @@ export function useWorkspace() {
           phase: "ready",
           saveStatus: initialSaveStatus,
           workspace,
+          secret: repository.isSecret(workspace.project.id),
           files: [
-            { projectId: workspace.project.id, title: workspace.project.title },
+            { projectId: workspace.project.id, title: workspace.project.title, ...(repository.isSecret(workspace.project.id) ? { secret: true, locked: false } : {}) },
             ...storedFiles.filter((file) => file.projectId !== workspace.project.id),
           ],
         });
@@ -382,7 +410,7 @@ export function useWorkspace() {
         database?.close();
       })();
     };
-  }, [installCoordinator]);
+  }, [installCoordinator, keyring]);
 
   const handleEditorReady = useCallback((editor: Editor) => {
     editorRef.current = editor;
@@ -993,7 +1021,11 @@ export function useWorkspace() {
         await stopCoordinator();
         stopped = true;
       }
-      const next = await repository.activateFile(persistedReferenceRef.current, target);
+      // From the lock screen, the stored shell is the active record the switch must match.
+      const lockedShell = persistedReferenceRef.current === null && lockedProjectRef.current !== null ? await repository.loadShell() : null;
+      const reference = persistedReferenceRef.current ?? (lockedShell ? { projectId: lockedShell.project.id, storageVersion: lockedShell.storageVersion } : null);
+      const next = await repository.activateFile(reference, target);
+      lockedProjectRef.current = null;
       if (!mountedRef.current) return { ok: false };
       editorRef.current = null;
       snapshotRef.current = next;
@@ -1001,14 +1033,16 @@ export function useWorkspace() {
       contentRevisionRef.current = next.chapter.contentRevision;
       operationRef.current = "idle";
       installCoordinator();
+      const secret = repository.isSecret(next.project.id);
+      const entry = secret ? { projectId: next.project.id, title: next.project.title, secret: true, locked: false } : { projectId: next.project.id, title: next.project.title };
       setState((value) => {
-        const files = value.phase === "ready" || value.phase === "deleted" ? value.files : [];
+        const files = value.phase === "ready" || value.phase === "deleted" || value.phase === "locked" ? value.files : [];
         return {
           phase: "ready", access: "editable", editorSession: editorEpochsRef.current.get(next.project.id) ?? 0,
-          operation: "idle", saveStatus: "saved", workspace: next,
+          operation: "idle", saveStatus: "saved", workspace: next, secret,
           files: files.some((file) => file.projectId === next.project.id)
-            ? files.map((file) => file.projectId === next.project.id ? { projectId: file.projectId, title: next.project.title } : file)
-            : [...files, { projectId: next.project.id, title: next.project.title }],
+            ? files.map((file) => file.projectId === next.project.id ? entry : file)
+            : [...files, entry],
         };
       });
       return { ok: true };
@@ -1018,6 +1052,7 @@ export function useWorkspace() {
       else if (stopped) resumeAfterFailure(false);
       if (editor !== null && !editor.isDestroyed && accessRef.current === "editable") editor.setEditable(true);
       setState((value) => value.phase === "ready" ? { ...value, operation: "idle", access: accessRef.current } : value);
+      if (error instanceof SecretLockedError) return { ok: false, locked: true, message: "シークレット作品はロック中です。「解錠」からパスワードを入力してください。" };
       return { ok: false, message: "保存または読み込みに失敗したため、作品を切り替えませんでした。現在の本文はこの画面に保持されています。" };
     }
   }, [installCoordinator, resumeAfterFailure, stopCoordinator]);
@@ -1025,7 +1060,7 @@ export function useWorkspace() {
   const changeWritingWorkspace = useCallback(async (
     change: (current: WorkspaceSnapshot) => WorkspaceSnapshot,
     restore = false,
-    trashAction?: "delete-chapter" | string,
+    trashAction?: "delete-chapter" | "secret-on" | "secret-off" | string,
   ): Promise<WorkspaceActionResult> => {
     const repository = repositoryRef.current;
     const editor = editorRef.current;
@@ -1048,8 +1083,10 @@ export function useWorkspace() {
       await stopCoordinator(); stopped = true;
       const reference = persistedReferenceRef.current;
       const database = databaseRef.current;
-      const next = trashAction === "delete-chapter" && database ? await new TrashRepository(database).removeChapter(changed, current.chapter.id)
-        : trashAction && database && reference ? await new TrashRepository(database).restoreChapter(reference, trashAction)
+      void database;
+      const next = trashAction === "delete-chapter" ? await repository.trash().removeChapter(changed, current.chapter.id)
+        : (trashAction === "secret-on" || trashAction === "secret-off") && reference ? await repository.setSecret(reference, changed, trashAction === "secret-on")
+        : trashAction && reference ? await repository.trash().restoreChapter(reference, trashAction, changed)
         : restore && reference ? await repository.restoreHistory(reference, changed) : await repository.save(changed);
       if (!mountedRef.current) return { ok: false };
       const remount = restore || next.chapter.id !== current.chapter.id;
@@ -1061,9 +1098,10 @@ export function useWorkspace() {
       operationRef.current = "idle";
       installCoordinator();
       if (!remount) editor?.setEditable(true);
-      setState((value) => value.phase === "ready" ? { ...value, operation: "idle", saveStatus: "saved", workspace: next,
+      const secret = repository.isSecret(next.project.id);
+      setState((value) => value.phase === "ready" ? { ...value, operation: "idle", saveStatus: "saved", workspace: next, secret,
         editorSession: editorEpochsRef.current.get(next.project.id) ?? 0,
-        files: value.files.map((file) => file.projectId === next.project.id ? { ...file, title: next.project.title } : file),
+        files: value.files.map((file) => file.projectId === next.project.id ? (secret ? { projectId: file.projectId, title: next.project.title, secret: true, locked: false } : { projectId: file.projectId, title: next.project.title }) : file),
       } : value);
       return { ok: true };
     } catch (error: unknown) {
@@ -1083,7 +1121,7 @@ export function useWorkspace() {
   const listHistory = useCallback(async (): Promise<WritingHistoryEntry[]> => {
     const database = databaseRef.current; const current = snapshotRef.current;
     if (!database || !current) return [];
-    return new WritingHistoryRepository(database).list(current.project.id);
+    return (repositoryRef.current ?? missingRepository()).history().list(current.project.id);
   }, []);
   const withSavedWorkspace = useCallback(async <Result,>(
     action: (database: NonNullable<typeof databaseRef.current>, snapshot: WorkspaceSnapshot, reference: StoredWorkspaceReference) => Promise<Result>,
@@ -1119,7 +1157,7 @@ export function useWorkspace() {
     try { return await action(database, null); }
     finally { operationRef.current = "idle"; }
   }, [withSavedWorkspace]);
-  const listTrash = useCallback(async (): Promise<TrashEntry[]> => databaseRef.current ? new TrashRepository(databaseRef.current).list() : [], []);
+  const listTrash = useCallback(async (): Promise<TrashEntry[]> => repositoryRef.current ? repositoryRef.current.trash().list() : [], []);
   const deleteChapter = useCallback(() => changeWritingWorkspace((current) => {
     const remaining = orderedChapters(current).filter((chapter) => chapter.id !== current.chapter.id);
     if (remaining.length === 0) throw new Error("最後の章は削除できません。");
@@ -1128,7 +1166,7 @@ export function useWorkspace() {
   const restoreTrash = useCallback(async (entry: TrashEntry): Promise<WorkspaceActionResult> => {
     if (entry.kind === "chapter") return changeWritingWorkspace((current) => current, false, entry.id);
     try {
-      const restored = await withTrashStorage((database, reference) => new TrashRepository(database).restoreWorkspace(reference, entry.id));
+      const restored = await withTrashStorage((_database, reference) => (repositoryRef.current ?? missingRepository()).trash().restoreWorkspace(reference, entry.id));
       editorEpochsRef.current.set(restored.project.id, (editorEpochsRef.current.get(restored.project.id) ?? 0) + 1);
       const files = await repositoryRef.current?.listFiles();
       if (files && mountedRef.current) setState((value) => value.phase === "ready" || value.phase === "deleted" ? { ...value, files } : value);
@@ -1139,19 +1177,19 @@ export function useWorkspace() {
   const trashSavedWork = useCallback(async (projectId: string): Promise<WorkspaceActionResult> => {
     if (snapshotRef.current?.project.id === projectId) return { ok: false, message: "開いている作品は「設定」の「ローカルデータを削除」から削除してください。" };
     try {
-      await withTrashStorage((database, reference) => new TrashRepository(database).removeSavedWorkspace(reference, projectId));
+      await withTrashStorage((_database, reference) => (repositoryRef.current ?? missingRepository()).trash().removeSavedWorkspace(reference, projectId));
       const files = await repositoryRef.current?.listFiles();
       if (files && mountedRef.current) setState((value) => value.phase === "ready" || value.phase === "deleted" ? { ...value, files } : value);
       return { ok: true, message: "作品をごみ箱へ移しました。ごみ箱から復元できます。" };
     } catch { return { ok: false, message: "ごみ箱へ移せませんでした。作品は保持されています。" }; }
   }, [withTrashStorage]);
   const purgeTrash = useCallback(async (id: string): Promise<WorkspaceActionResult> => {
-    try { await withTrashStorage((database, reference) => new TrashRepository(database).purge(reference, id)); return { ok: true }; }
+    try { await withTrashStorage((_database, reference) => (repositoryRef.current ?? missingRepository()).trash().purge(reference, id)); return { ok: true }; }
     catch { return { ok: false, message: "完全削除できませんでした。" }; }
   }, [withTrashStorage]);
   const createCheckpoint = useCallback(async (label: string): Promise<WorkspaceActionResult> => {
     try {
-      await withSavedWorkspace((database, current) => new WritingHistoryRepository(database).add(createHistoryEntry(current, label, "manual")));
+      await withSavedWorkspace((_database, current) => (repositoryRef.current ?? missingRepository()).history().add(createHistoryEntry(current, label, "manual")));
       return { ok: true };
     } catch { return { ok: false, message: "履歴を保存できませんでした。本文は保持されています。" }; }
   }, [withSavedWorkspace]);
@@ -1170,15 +1208,31 @@ export function useWorkspace() {
   }, true), [changeWritingWorkspace]);
   const clearHistory = useCallback(async (): Promise<WorkspaceActionResult> => {
     try {
-      await withSavedWorkspace((database, current) => new WritingHistoryRepository(database).clear(current.project.id));
+      await withSavedWorkspace((_database, current) => (repositoryRef.current ?? missingRepository()).history().clear(current.project.id));
       return { ok: true };
     } catch { return { ok: false, message: "履歴を削除できませんでした。" }; }
   }, [withSavedWorkspace]);
   const exportLibrary = useCallback((): Promise<LibraryBackup> => withTrashStorage((database) => new LibraryBackupRepository(database).export()), [withTrashStorage]);
-  const importLibrary = useCallback(async (bundle: LibraryBackup): Promise<WorkspaceActionResult> => {
+  const importLibrary = useCallback(async (bundle: LibraryBackup, password?: string): Promise<WorkspaceActionResult> => {
+    let codec: SecretImportCodec | undefined;
+    if (libraryBackupHasSecrets(bundle)) {
+      const database = databaseRef.current;
+      if (!database || !bundle.secretVault) return { ok: false, message: "シークレット作品の鍵がバックアップにありません。" };
+      if (!password) return { ok: false, needsPassword: true, message: "シークレット作品を含むバックアップです。作成時のパスワードを入力してください。" };
+      const source = await unlockSecretVault(bundle.secretVault, password);
+      if (!source) return { ok: false, needsPassword: true, message: "パスワードが違います。" };
+      const vaults = new SecretVaultRepository(database);
+      const local = await vaults.get();
+      let target: CryptoKey;
+      if (!local) { await vaults.create(bundle.secretVault); keyring.set(source); setVaultExists(true); target = source; }
+      else if (local.kdf.salt === bundle.secretVault.kdf.salt && local.wrappedKey.data === bundle.secretVault.wrappedKey.data) { if (!keyring.unlocked) keyring.set(source); target = source; }
+      else if (keyring.unlocked) target = keyring.require();
+      else return { ok: false, locked: true, message: "この端末のシークレット作品を先に解錠してください。" };
+      codec = { open: (shell) => openWorkspace(source, shell), seal: (copy) => sealWorkspace(target, copy) };
+    }
     try {
       return await withTrashStorage(async (database, reference) => {
-        const count = await new LibraryBackupRepository(database).importCopies(bundle, reference);
+        const count = await new LibraryBackupRepository(database).importCopies(bundle, reference, codec);
         try {
           const files = await repositoryRef.current?.listFiles();
           if (files && mountedRef.current) setState((value) => value.phase === "ready" || value.phase === "deleted" ? { ...value, files } : value);
@@ -1186,28 +1240,133 @@ export function useWorkspace() {
         } catch { return { ok: true, message: "復元は完了しました。一覧を再読み込みできないため、ページを再読み込みしてください。" }; }
       });
     } catch { return { ok: false, message: "一括復元に失敗しました。既存作品は変更されていません。" }; }
-  }, [withTrashStorage]);
+  }, [keyring, withTrashStorage]);
+
+  /** Open the locked active work after the password was entered. */
+  const openLockedWorkspace = useCallback(async (): Promise<WorkspaceActionResult> => {
+    const repository = repositoryRef.current;
+    if (!repository || lockedProjectRef.current === null) return { ok: false };
+    try {
+      const workspace = await repository.load();
+      if (!workspace) return { ok: false, message: "作品が見つかりません。" };
+      const files = await repository.listFiles();
+      lockedProjectRef.current = null;
+      persistedReferenceRef.current = { projectId: workspace.project.id, storageVersion: workspace.storageVersion };
+      snapshotRef.current = workspace; contentRevisionRef.current = workspace.chapter.contentRevision;
+      editorEpochsRef.current.set(workspace.project.id, (editorEpochsRef.current.get(workspace.project.id) ?? 0) + 1);
+      if (accessRef.current === "editable") installCoordinator();
+      setState({ access: accessRef.current, editorSession: editorEpochsRef.current.get(workspace.project.id) ?? 0, operation: "idle", phase: "ready", saveStatus: "saved",
+        workspace, secret: repository.isSecret(workspace.project.id), files });
+      return { ok: true };
+    } catch { return { ok: false, message: "シークレット作品を開けませんでした。" }; }
+  }, [installCoordinator]);
+  const refreshFiles = useCallback(async () => {
+    const files = await repositoryRef.current?.listFiles().catch(() => null);
+    if (files && mountedRef.current) setState((value) => value.phase === "ready" || value.phase === "deleted" || value.phase === "locked" ? { ...value, files } : value);
+  }, []);
+  const unlockSecret = useCallback(async (password: string): Promise<WorkspaceActionResult> => {
+    const database = databaseRef.current;
+    if (!database) return { ok: false };
+    const vault = await new SecretVaultRepository(database).get().catch(() => null);
+    if (!vault) return { ok: false, message: "パスワードが設定されていません。" };
+    const key = await unlockSecretVault(vault, password).catch(() => null);
+    if (!key) return { ok: false, message: "パスワードが違います。" };
+    keyring.set(key);
+    if (lockedProjectRef.current !== null) return openLockedWorkspace();
+    await refreshFiles();
+    return { ok: true, message: "解錠しました。" };
+  }, [keyring, openLockedWorkspace, refreshFiles]);
+  /** Save the open secret work, drop its plain text from memory and forget the key. */
+  const lockSecret = useCallback(async (): Promise<WorkspaceActionResult> => {
+    if (!keyring.unlocked) return { ok: true };
+    const repository = repositoryRef.current; const current = snapshotRef.current;
+    if (repository && current && repository.isSecret(current.project.id)) {
+      if (operationRef.current !== "idle" || settingsSaveRef.current || editorRef.current?.view.composing) return { ok: false, message: "入力・保存が終わってからロックしてください。" };
+      const coordinator = coordinatorRef.current;
+      try {
+        if (coordinator) { await coordinator.flush(); if (coordinator.state.status !== "saved") throw new Error("保存できません。"); }
+      } catch { return { ok: false, message: "保存できないためロックしませんでした。本文は保持されています。" }; }
+      await stopCoordinator();
+      editorRef.current = null; snapshotRef.current = null; persistedReferenceRef.current = null;
+      lockedProjectRef.current = current.project.id;
+      keyring.clear();
+      const files = await repository.listFiles().catch(() => []);
+      if (mountedRef.current) setState({ phase: "locked", access: accessRef.current, projectId: current.project.id, files });
+      return { ok: true };
+    }
+    keyring.clear();
+    await refreshFiles();
+    return { ok: true };
+  }, [keyring, refreshFiles, stopCoordinator]);
+  const setupSecret = useCallback(async (password: string): Promise<WorkspaceActionResult> => {
+    const database = databaseRef.current;
+    if (!database) return { ok: false };
+    try {
+      const vaults = new SecretVaultRepository(database);
+      if (await vaults.get()) return { ok: false, message: "パスワードは既に設定されています。" };
+      const { record, key } = await createSecretVault(password);
+      await vaults.create(record); keyring.set(key); setVaultExists(true);
+      return { ok: true };
+    } catch (error: unknown) { return { ok: false, message: error instanceof SecretPasswordError ? error.message : "パスワードを設定できませんでした。" }; }
+  }, [keyring]);
+  const setWorkSecret = useCallback(async (on: boolean): Promise<WorkspaceActionResult> => {
+    if (!keyring.unlocked) return { ok: false, locked: true, message: "先に解錠してください。" };
+    const result = await changeWritingWorkspace((current) => current, false, on ? "secret-on" : "secret-off");
+    return result.ok ? { ok: true, message: on ? "この作品を暗号化して保存しました。" : "シークレットを解除しました。" } : result;
+  }, [changeWritingWorkspace, keyring]);
+  const changeSecretPassword = useCallback(async (currentPassword: string, nextPassword: string): Promise<WorkspaceActionResult> => {
+    const database = databaseRef.current;
+    if (!database) return { ok: false };
+    try {
+      const vaults = new SecretVaultRepository(database);
+      const vault = await vaults.get();
+      if (!vault) return { ok: false, message: "パスワードが設定されていません。" };
+      const next = await rewrapSecretVault(vault, currentPassword, nextPassword);
+      if (!next) return { ok: false, message: "現在のパスワードが違います。" };
+      await vaults.replace(vault, next);
+      return { ok: true, message: "パスワードを変更しました。" };
+    } catch (error: unknown) { return { ok: false, message: error instanceof SecretPasswordError ? error.message : "パスワードを変更できませんでした。" }; }
+  }, []);
+  /** Move the locked active work to the trash without the password (it stays encrypted there). */
+  const trashLockedWork = useCallback(async (): Promise<WorkspaceActionResult> => {
+    const repository = repositoryRef.current; const projectId = lockedProjectRef.current;
+    if (!repository || projectId === null || accessRef.current !== "editable") return { ok: false };
+    try {
+      const shell = await repository.loadShell();
+      if (!shell || shell.project.id !== projectId) throw new Error("作品が一致しません。");
+      await repository.base.delete({ projectId, storageVersion: shell.storageVersion });
+      lockedProjectRef.current = null;
+      const files = await repository.listFiles();
+      if (mountedRef.current) setState({ phase: "deleted", files });
+      return { ok: true, message: "シークレット作品をごみ箱へ移しました。" };
+    } catch { return { ok: false, message: "ごみ箱へ移せませんでした。" }; }
+  }, []);
 
   const syncActions = useMemo<WorkspaceSyncActions>(() => {
-    function current() {
+    const plainOnly = (snapshot: WorkspaceSnapshot) => { if (repositoryRef.current?.isSecret(snapshot.project.id)) throw new Error(SECRET_SYNC_MESSAGE); };
+    function current(guard = true) {
       const database = databaseRef.current; const snapshot = snapshotRef.current;
       if (!database || !snapshot) throw new Error("作品を開いてください。");
+      if (guard) plainOnly(snapshot);
       return { repository: new SyncRepository(database), projectId: snapshot.project.id };
     }
     return {
-      load: () => { const { repository, projectId } = current(); return repository.load(projectId); },
-      enable: (enabled) => withSavedWorkspace((database, snapshot) => new SyncRepository(database).setEnabled(snapshot.project.id, enabled)),
-      prepare: () => withSavedWorkspace((database, snapshot) => new SyncRepository(database).stage(snapshot.project.id)),
+      // Reading the (empty) sync state is harmless; staging and sending are refused for secret works.
+      load: () => { const { repository, projectId } = current(false); return repository.load(projectId); },
+      enable: (enabled) => withSavedWorkspace((database, snapshot) => { plainOnly(snapshot); return new SyncRepository(database).setEnabled(snapshot.project.id, enabled); }),
+      prepare: () => withSavedWorkspace((database, snapshot) => { plainOnly(snapshot); return new SyncRepository(database).stage(snapshot.project.id); }),
       send: (transport, signal) => { const { repository, projectId } = current(); return sendPending(repository, projectId, transport, signal); },
       receive: (transport, signal) => { const { repository, projectId } = current(); return receiveRemote(repository, projectId, transport, signal); },
       resolve: (sequence) => withSavedWorkspace((database, snapshot) => new SyncRepository(database).resolveWithLocal(snapshot.project.id, sequence)),
       removeCopy: (copyId, sequence) => withSavedWorkspace((database, snapshot) => new SyncRepository(database).removeCopy(snapshot.project.id, copyId, sequence)),
-      export: () => withSavedWorkspace(async (database, snapshot) => createSyncPayload(snapshot, await new WritingHistoryRepository(database).list(snapshot.project.id))),
+      export: () => withSavedWorkspace(async (database, snapshot) => { plainOnly(snapshot); return createSyncPayload(snapshot, await new WritingHistoryRepository(database).list(snapshot.project.id)); }),
     };
   }, [withSavedWorkspace]);
 
   return {
     syncActions,
+    secret: { vaultExists, unlocked: secretUnlocked },
+    unlockSecret, lockSecret, setupSecret, setWorkSecret, changeSecretPassword, trashLockedWork,
     deleteChapter, listTrash, restoreTrash, purgeTrash, trashSavedWork,
     changeChapters, updateWritingOptions, listHistory, createCheckpoint, restoreCheckpoint, clearHistory, exportLibrary, importLibrary, historyWarning,
     activateWorkspace,

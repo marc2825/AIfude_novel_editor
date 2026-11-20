@@ -12,7 +12,8 @@ const LABELS: Record<WorkspacePanelId, string> = {
   settings: "設定とバックアップ", connections: "AI接続の設定・診断", backup: "ファイルとバックアップ",
 };
 
-export function WorkspaceLayout({ header, files, editor, panels, alerts, children, active, onActiveChange, writingTool = "rewrite", onWritingToolChange }: Readonly<{
+export function WorkspaceLayout({ header, files, editor, panels, alerts, children, active, onActiveChange, writingTool = "rewrite", onWritingToolChange, secretAction }: Readonly<{
+  secretAction?: ReactNode;
   writingTool?: WritingToolId; onWritingToolChange?: (tool: WritingToolId) => void;
   active: WorkspacePanelId | null; onActiveChange: (panel: WorkspacePanelId | null) => void;
   header: ReactNode; files: ReactNode; editor: ReactNode; alerts: ReactNode; children: ReactNode;
@@ -48,6 +49,7 @@ export function WorkspaceLayout({ header, files, editor, panels, alerts, childre
     <div className={styles.topbar}>
       {header}
       <nav aria-label="アプリの設定" className={styles.topActions}>
+        {secretAction}
         {trigger("backup", "ファイル")}
         {trigger("connections", "AI接続")}
         {trigger("settings", "設定")}

@@ -7,18 +7,26 @@ import {
   WORKSPACE_FILES_STORE_NAME,
   WORKSPACE_HISTORY_STORE_NAME,
   WORKSPACE_TRASH_STORE_NAME,
+  WORKSPACE_SYNC_STORE_NAME,
   type OpenWorkspaceDatabase,
 } from "./indexeddb";
 
-import { createTrashEntry, MAX_TRASH_ENTRIES } from "./trash-repository";
-import { createHistoryEntry, MAX_HISTORY_ENTRIES, parseHistoryEntry } from "./writing-history";
+import { createTrashEntry, MAX_TRASH_ENTRIES, parseTrashEntry, type TrashEntry } from "./trash-repository";
+import type { SealedRecord } from "../domain/sealed-record";
+import { SecretStateError } from "./secret-errors";
+import { createHistoryEntry, MAX_HISTORY_ENTRIES, parseHistoryEntry, type WritingHistoryEntry } from "./writing-history";
 
 export type StoredWorkspaceReference = Readonly<{
   projectId: string;
   storageVersion: number;
 }>;
 
-export type WorkspaceFileInfo = Readonly<{ projectId: string; title: string }>;
+export type WorkspaceFileInfo = Readonly<{ projectId: string; title: string; secret?: boolean; locked?: boolean; sealed?: SealedRecord }>;
+
+export { SecretStateError };
+function assertSameSecrecy(current: WorkspaceSnapshot, next: WorkspaceSnapshot): void {
+  if ((current.secret === undefined) !== (next.secret === undefined)) throw new SecretStateError();
+}
 
 export class WorkspaceVersionConflictError extends Error {
   readonly expectedStorageVersion: number | null;
@@ -93,7 +101,7 @@ export class WorkspaceRepository {
       const key = [...activeKeys, ...fileKeys][index];
       if (key !== snapshot.project.id || seen.has(key)) throw new InvalidWorkspaceStoreError();
       seen.add(key);
-      return { projectId: key, title: snapshot.project.title };
+      return snapshot.secret ? { projectId: key, title: snapshot.project.title, secret: true, sealed: snapshot.secret } : { projectId: key, title: snapshot.project.title };
     });
   }
 
@@ -226,6 +234,7 @@ export class WorkspaceRepository {
     }
 
     assertExpectedVersion(current, snapshot.storageVersion);
+    assertSameSecrecy(current, snapshot);
 
     const savedSnapshot = parseWorkspaceSnapshot({
       ...snapshot,
@@ -292,6 +301,7 @@ export class WorkspaceRepository {
       const stored = await store.get(currentReference.projectId);
       const current = parseWorkspaceSnapshot(stored);
       assertExpectedVersion(current, currentReference.storageVersion);
+      if (current.secret || replacement.secret) throw new SecretStateError();
 
       const replacedSnapshot = parseWorkspaceSnapshot({
         ...replacement,
@@ -324,6 +334,7 @@ export class WorkspaceRepository {
       if (keys.length !== 1 || keys[0] !== reference.projectId || next.project.id !== reference.projectId) throw new InvalidWorkspaceStoreError();
       const current = parseWorkspaceSnapshot(await store.get(reference.projectId));
       assertExpectedVersion(current, reference.storageVersion);
+      assertSameSecrecy(current, next);
       const saved = parseWorkspaceSnapshot({ ...next, storageVersion: nextStorageVersion(current.storageVersion) });
       const history = tx.objectStore(WORKSPACE_HISTORY_STORE_NAME);
       const entries = (await history.index("projectId").getAll(reference.projectId)).map(parseHistoryEntry).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -331,6 +342,54 @@ export class WorkspaceRepository {
       await history.add(checkpoint, checkpoint.id);
       await store.put(saved, saved.project.id);
       for (const entry of entries.slice(MAX_HISTORY_ENTRIES - 1)) await history.delete(entry.id);
+      await tx.done;
+      return saved;
+    } catch (error: unknown) {
+      try { tx.abort(); } catch { /* Already completed or aborted. */ }
+      await tx.done.catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /** Whether a saved, inactive work is stored as a secret shell. */
+  async isSecretFile(projectId: string): Promise<boolean> {
+    const stored: unknown = await this.#database.get(WORKSPACE_FILES_STORE_NAME, projectId);
+    return stored !== undefined && parseWorkspaceSnapshot(stored).secret !== undefined;
+  }
+
+  /**
+   * Switch the active work, its saved history and its trash entries between plain and secret
+   * storage in one transaction. Callers convert the records beforehand (WebCrypto cannot run
+   * inside an IndexedDB transaction); this only checks that nothing changed meanwhile.
+   */
+  async convertSecrecy(reference: StoredWorkspaceReference, activeValue: WorkspaceSnapshot, historyValues: readonly WritingHistoryEntry[], trashValues: readonly TrashEntry[]): Promise<WorkspaceSnapshot> {
+    const active = parseWorkspaceSnapshot(activeValue);
+    const history = historyValues.map(parseHistoryEntry);
+    const trash = trashValues.map(parseTrashEntry);
+    const secret = active.secret !== undefined;
+    if (active.project.id !== reference.projectId || active.storageVersion !== reference.storageVersion ||
+        history.some((entry) => entry.projectId !== active.project.id || (entry.snapshot.secret !== undefined) !== secret) ||
+        trash.some((entry) => entry.projectId !== active.project.id || (entry.snapshot.secret !== undefined) !== secret || entry.history.some((item) => (item.snapshot.secret !== undefined) !== secret))) throw new SecretStateError();
+    const tx = this.#database.transaction([WORKSPACES_STORE_NAME, WORKSPACE_HISTORY_STORE_NAME, WORKSPACE_TRASH_STORE_NAME, WORKSPACE_SYNC_STORE_NAME], "readwrite", { durability: "strict" });
+    try {
+      const store = tx.objectStore(WORKSPACES_STORE_NAME);
+      const keys = await store.getAllKeys();
+      if (keys.length !== 1 || keys[0] !== reference.projectId) throw new WorkspaceVersionConflictError(reference.storageVersion, null);
+      const current = parseWorkspaceSnapshot(await store.get(reference.projectId));
+      assertExpectedVersion(current, reference.storageVersion);
+      if ((current.secret !== undefined) === secret) throw new SecretStateError();
+      const historyStore = tx.objectStore(WORKSPACE_HISTORY_STORE_NAME);
+      const storedHistory = (await historyStore.index("projectId").getAllKeys(reference.projectId)).map(String).sort();
+      const trashStore = tx.objectStore(WORKSPACE_TRASH_STORE_NAME);
+      const storedTrash = (await trashStore.getAll()).map(parseTrashEntry).filter((entry) => entry.projectId === reference.projectId).map((entry) => entry.id).sort();
+      if (JSON.stringify(storedHistory) !== JSON.stringify(history.map((entry) => entry.id).sort()) ||
+          JSON.stringify(storedTrash) !== JSON.stringify(trash.map((entry) => entry.id).sort())) throw new WorkspaceVersionConflictError(reference.storageVersion, current.storageVersion);
+      const saved = parseWorkspaceSnapshot({ ...active, storageVersion: nextStorageVersion(current.storageVersion) });
+      await store.put(saved, saved.project.id);
+      for (const entry of history) await historyStore.put(entry, entry.id);
+      for (const entry of trash) await trashStore.put(entry, entry.id);
+      // Earlier sync outboxes and copies hold plain text; secret works do not sync.
+      if (secret) await tx.objectStore(WORKSPACE_SYNC_STORE_NAME).delete(reference.projectId);
       await tx.done;
       return saved;
     } catch (error: unknown) {
@@ -368,6 +427,7 @@ export class WorkspaceRepository {
       const entries = (await history.index("projectId").getAll(reference.projectId)).map(parseHistoryEntry);
       const recovery = recoveryValue === undefined ? current : parseWorkspaceSnapshot(recoveryValue);
       if (recovery.project.id !== current.project.id || recovery.document.id !== current.document.id || recovery.storageVersion !== current.storageVersion) throw new InvalidWorkspaceStoreError();
+      assertSameSecrecy(current, recovery);
       const trash = transaction.objectStore(WORKSPACE_TRASH_STORE_NAME);
       if (await trash.count() >= MAX_TRASH_ENTRIES) throw new Error("ごみ箱が満杯です。");
       const entry = createTrashEntry(recovery, null, entries);

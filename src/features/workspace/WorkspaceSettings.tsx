@@ -30,6 +30,7 @@ export type WorkspaceSettingsHandle = Readonly<{ save: () => Promise<WorkspaceAc
 
 type WorkspaceSettingsProps = Readonly<{
   embedded?: boolean;
+  confirmExport?: () => boolean;
   onDirtyChange?: (dirty: boolean) => void;
   onPaidApiEnabledChange?: (enabled: boolean) => void;
   chatGptConnection?: ChatGptConnectionController;
@@ -55,6 +56,7 @@ type WorkspaceSettingsProps = Readonly<{
 
 export const WorkspaceSettings = forwardRef<WorkspaceSettingsHandle, WorkspaceSettingsProps>(function WorkspaceSettings({
   embedded = false,
+  confirmExport,
   onDirtyChange,
   onPaidApiEnabledChange,
   chatGptConnection,
@@ -93,6 +95,7 @@ export const WorkspaceSettings = forwardRef<WorkspaceSettingsHandle, WorkspaceSe
   function exportWorkspace(kind: "json" | "text") {
     setError(null);
     setMessage(null);
+    if (confirmExport && !confirmExport()) { setMessage("書き出しを取り消しました。"); return; }
 
     try {
       const snapshot = getCurrentSnapshot();

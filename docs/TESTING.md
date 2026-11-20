@@ -324,6 +324,7 @@ Phase 0以降はtypecheck、lint、Vitest、buildを必須にする。E2E導入�
 - `workspace.test.tsx`：未保存アウトライン、章保存失敗、履歴取消／復元前保存記録、自動履歴opt-in／容量制限で本文保持、章を往復した同じPMへの中止無視の遅延AI応答拒否。
 - `writing-tools.spec.ts`：章管理と進捗保存、作品／章Undoとカーソル、閉じたタブの再読み込み、検索置換の確認／stale／Undo、メモを含む履歴プレビューと復元、一括バックアップ／コピー復元の取消と再読み込み。
 - `saved-works-and-pixiv.spec.ts`：保存済みの作品を確認後にごみ箱へ移し、開いている作品とタブを保つ。pixiv向けのルビ出力を確認画面で示し、本文を変えない。
+- `secret-works.spec.ts`：シークレット作品の暗号化保存（IndexedDBに平文が残らない）、再読み込みでのロック、誤ったパスワードの拒否、解錠・手動ロック、10分間の無操作での自動ロック、解除後の平文保存。
 
 実LLMの認証／推論とOS日本語IMEは未実施。合成compositionとChromiumの自動操作を実機IMEの代替と報告しない。
 

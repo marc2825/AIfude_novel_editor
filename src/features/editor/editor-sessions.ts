@@ -39,6 +39,10 @@ export class EditorSessions {
   }
   bind(key: string, callbacks: EditorCallbacks): void { const session = this.sessions.get(key); if (session) session.callbacks = callbacks; }
   deactivate(key: string): void { const session = this.sessions.get(key); if (session) { session.callbacks = null; session.editor.setEditable(false); } }
+  /** Destroy every live document of a work, e.g. when a secret work is locked. */
+  disposeProject(projectId: string): void {
+    for (const [key, session] of this.sessions) if (key.startsWith(`${projectId}:`)) { session.editor.destroy(); this.sessions.delete(key); }
+  }
   retain(): void { this.disposalGeneration++; }
   disposeLater(): void {
     const generation = ++this.disposalGeneration;

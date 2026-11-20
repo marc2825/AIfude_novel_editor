@@ -17,6 +17,10 @@ import { DiagnosticsPanel } from "../feedback/DiagnosticsPanel";
 import { SearchPanel } from "../editor/SearchPanel";
 import { TrashPanel } from "./TrashPanel";
 import { SavedWorksPanel } from "./SavedWorksPanel";
+import { confirmSecretExport, SecretLockScreen, SecretSettings, UnlockForm } from "./SecretControls";
+
+const SECRET_IDLE_LOCK_MS = 10 * 60 * 1000;
+const IDLE_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
 import { ChapterPanel, type ChapterPanelHandle } from "./ChapterPanel";
 import { WritingProgress } from "./WritingProgress";
 import { WritingHistoryPanel } from "./WritingHistoryPanel";
@@ -166,10 +170,21 @@ export function WorkspaceApp({
     updateSettings,
     updateStoryMemory,
     updateAuthoringProfile,
+    secret, unlockSecret, lockSecret, setupSecret, setWorkSecret, changeSecretPassword, trashLockedWork,
   } = useWorkspace();
+  const [unlockOpen, setUnlockOpen] = useState(false);
   const [uiWarning, setUiWarning] = useState(false);
   const [editorSessions] = useState(() => new EditorSessions(new EditorUiStateStore(() => queueMicrotask(() => setUiWarning(true)))));
   useEffect(() => { editorSessions.retain(); return () => editorSessions.disposeLater(); }, [editorSessions]);
+  // Locked secret works must not stay in memory as live editor documents.
+  const knownFiles = state.phase === "ready" || state.phase === "deleted" || state.phase === "locked" ? state.files : null;
+  const lockedProjectId = state.phase === "locked" ? state.projectId : null;
+  useEffect(() => {
+    if (secret.unlocked) return;
+    for (const file of knownFiles ?? []) if (file.secret) editorSessions.disposeProject(file.projectId);
+    if (lockedProjectId) editorSessions.disposeProject(lockedProjectId);
+  }, [secret.unlocked, knownFiles, lockedProjectId, editorSessions]);
+
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
   const [activeCount, setActiveCount] = useState(0);
   const chapterPanelRef = useRef<ChapterPanelHandle>(null);
@@ -288,6 +303,37 @@ export function WorkspaceApp({
     }
     return manuscript;
   }, [saveWorkspace]);
+
+  /** Save every draft and the body before a secret work is locked, so locking never loses input. */
+  const lockNow = useCallback(async (): Promise<WorkspaceActionResult> => {
+    if (state.phase === "ready" && state.secret) {
+      const saved = await saveCurrent();
+      if (!saved.ok) return { ok: false, message: saved.message ?? "保存できないためロックしませんでした。" };
+    }
+    return lockSecret();
+  }, [state, saveCurrent, lockSecret]);
+  // The idle timer must not restart on every state change, so it reads the latest lockNow through a ref.
+  const lockNowRef = useRef(lockNow);
+  useEffect(() => { lockNowRef.current = lockNow; }, [lockNow]);
+  // Auto-lock after 10 minutes without input while unlocked; retry a minute later if a save or input is in progress.
+  useEffect(() => {
+    if (!secret.unlocked) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = (delay = SECRET_IDLE_LOCK_MS) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { void lockNowRef.current().then((result) => { if (!result.ok) schedule(60_000); }); }, delay);
+    };
+    const activity = () => schedule();
+    for (const name of IDLE_EVENTS) window.addEventListener(name, activity, { capture: true, passive: true });
+    schedule();
+    return () => { clearTimeout(timer); for (const name of IDLE_EVENTS) window.removeEventListener(name, activity, { capture: true }); };
+  }, [secret.unlocked]);
+  const secretAction = secret.vaultExists && state.phase !== "locked" ? (secret.unlocked
+    ? <button type="button" aria-label="シークレット作品をロック" onClick={() => void lockNow()}><span>ロック</span></button>
+    : <button type="button" aria-label="シークレット作品を解錠" aria-expanded={unlockOpen} onClick={() => setUnlockOpen(!unlockOpen)}><span>解錠</span></button>) : null;
+  const unlockUi = unlockOpen && !secret.unlocked ? <section aria-label="シークレット作品の解錠" className={styles.feedback}>
+    <UnlockForm onUnlock={async (password) => { const result = await unlockSecret(password); if (result.ok) setUnlockOpen(false); return result; }} />
+  </section> : null;
   const switchWorkspace = useCallback(async (target: string | WorkspaceSnapshot): Promise<WorkspaceActionResult> => {
     if (typeof target === "string" && currentSnapshot()?.project.id === target) return { ok: true };
     if (!confirmDiscardMemory()) return { ok: false, message: "作品の切替を取り消しました。" };
@@ -318,15 +364,16 @@ export function WorkspaceApp({
     uiState={editorSessions.uiState}
     activeProjectId={state.phase === "ready" ? state.workspace.project.id : null}
     disabled={state.phase === "ready" ? state.access !== "editable" || state.operation !== "idle" : state.phase !== "deleted"}
-    files={state.phase === "ready" || state.phase === "deleted" ? state.files : []}
+    files={state.phase === "ready" || state.phase === "deleted" || state.phase === "locked" ? state.files : []}
     getCurrentSnapshot={currentSnapshot} onNew={() => switchWorkspace(createWritingWorkspace())}
     onOpen={openWritingFile} onSave={saveCurrent} onSwitch={switchWorkspace} onManage={() => setActivePanel("backup")}
+    confirmExport={() => confirmSecretExport(state.phase === "ready" && state.secret === true)}
   />;
 
-  const savedWorksUi = <SavedWorksPanel activeProjectId={state.phase === "ready" ? state.workspace.project.id : null}
+  const savedWorksUi = <SavedWorksPanel activeProjectId={state.phase === "ready" ? state.workspace.project.id : state.phase === "locked" ? state.projectId : null}
     disabled={state.phase === "ready" ? state.access !== "editable" || state.operation !== "idle" : state.phase !== "deleted"}
-    files={state.phase === "ready" || state.phase === "deleted" ? state.files : []}
-    onOpen={switchWorkspace} onTrash={trashSavedWork} onTrashActive={guardedDelete} />;
+    files={state.phase === "ready" || state.phase === "deleted" || state.phase === "locked" ? state.files : []}
+    onOpen={switchWorkspace} onTrash={trashSavedWork} onTrashActive={state.phase === "locked" ? trashLockedWork : guardedDelete} />;
   const trashUi = <TrashPanel disabled={state.phase === "ready" ? state.access !== "editable" || state.operation !== "idle" : state.phase !== "deleted"}
     refreshKey={`${state.phase === "ready" ? `${state.workspace.project.id}:${state.workspace.document.chapterIds.join(",")}` : state.phase}|${state.phase === "ready" || state.phase === "deleted" ? state.files.map((file) => file.projectId).join(",") : ""}`}
     projectId={state.phase === "ready" ? state.workspace.project.id : null} onList={listTrash} onPurge={purgeTrash}
@@ -378,7 +425,7 @@ export function WorkspaceApp({
     return (
       <WorkspaceLayout active={activePanel} onActiveChange={changePanel}
         writingTool={writingTool}
-        header={<Header aiRuntime={aiRuntime} status="削除済み" />} files={filesUi} alerts={null}
+        header={<Header aiRuntime={aiRuntime} status="削除済み" />} files={filesUi} alerts={unlockUi} secretAction={secretAction}
         panels={{
         typography: null, feedback: null, settings: null, memory: null, chapters: null, history: null, connections: connectionUi,
           backup: <>{savedWorksUi}{trashUi}<LibraryBackupPanel disabled={false} onExport={exportLibrary} onImport={importLibrary} /></> }}
@@ -387,6 +434,21 @@ export function WorkspaceApp({
             ローカルデータを削除しました。ごみ箱から復元できます。新しい空の作品を始めるには「新規作品」を選んでください。
           </p>
           <button onClick={() => void switchWorkspace(createWritingWorkspace())} type="button">新しい作品を始める</button>
+        </div>}
+      >{null}</WorkspaceLayout>
+    );
+  }
+
+  if (state.phase === "locked") {
+    return (
+      <WorkspaceLayout active={activePanel} onActiveChange={changePanel}
+        writingTool={writingTool}
+        header={<Header aiRuntime={aiRuntime} status="ロック中" />} files={filesUi} alerts={null}
+        panels={{
+          typography: null, feedback: null, settings: null, memory: null, chapters: null, history: null, connections: connectionUi,
+          backup: <>{savedWorksUi}{trashUi}<LibraryBackupPanel disabled={false} onExport={exportLibrary} onImport={importLibrary} /></> }}
+        editor={<div id="workspace-editor" role="tabpanel" aria-label="シークレット作品">
+          <SecretLockScreen onUnlock={unlockSecret} onTrash={trashLockedWork} canTrash={state.access === "editable"} />
         </div>}
       >{null}</WorkspaceLayout>
     );
@@ -422,7 +484,7 @@ export function WorkspaceApp({
 
   return (
     <WorkspaceLayout active={activePanel} onActiveChange={changePanel}
-      writingTool={writingTool} onWritingToolChange={setWritingTool}
+      writingTool={writingTool} onWritingToolChange={setWritingTool} secretAction={secretAction}
       header={<Header aiRuntime={aiRuntime} modelPreference={state.workspace.project.aiModelPreference}
         status={saveStatus} workspaceTitle={state.workspace.project.title} />}
       files={filesUi}
@@ -434,9 +496,11 @@ export function WorkspaceApp({
         ) : null}
         {historyWarning ? <p role="alert" className={styles.error}>{historyWarning}</p> : null}
         {uiWarning ? <p role="status">タブ・カーソル位置の保存を利用できません。本文の保存は別に行います。</p> : null}
+        {unlockUi}
       </>}
       panels={{
-        typography: <TypographyPanel key={`typography:${state.workspace.chapter.id}:${state.editorSession}`} editor={activeEditor} context={captureContext} active={activePanel === "typography"} getCurrentSnapshot={currentSnapshot} />,
+        typography: <TypographyPanel key={`typography:${state.workspace.chapter.id}:${state.editorSession}`} editor={activeEditor} context={captureContext} active={activePanel === "typography"} getCurrentSnapshot={currentSnapshot}
+          confirmExport={() => confirmSecretExport(state.secret)} />,
         feedback: <>{feedbackOpened ? <DiagnosticsPanel key={`diagnostics:${state.workspace.chapter.id}:${state.editorSession}`} editor={activeEditor} context={captureContext}
           onAi={(editor, instruction) => {
             setWritingTool("custom"); setActivePanel(null);
@@ -448,7 +512,10 @@ export function WorkspaceApp({
           busy={state.operation !== "idle"} editable={state.access === "editable"} getCurrentSnapshot={currentSnapshot}
           key={`${state.workspace.project.id}:${state.editorSession}`} onDelete={guardedDelete}
           onConsentChange={updateAiConsent} onImport={guardedImport} onModelPreferenceChange={updateAiModelPreference}
-          onSave={updateSettings} workspace={state.workspace} /><PwaControls online={online} offlineShell={offlineShell} onSave={saveCurrent} /></>,
+          onSave={updateSettings} workspace={state.workspace} confirmExport={() => confirmSecretExport(state.secret)} />
+          <SecretSettings vaultExists={secret.vaultExists} unlocked={secret.unlocked} secret={state.secret === true} disabled={!editable || state.operation !== "idle"}
+            onSetup={setupSecret} onUnlock={unlockSecret} onToggle={setWorkSecret} onChangePassword={changeSecretPassword} onLock={lockNow} />
+          <PwaControls online={online} offlineShell={offlineShell} onSave={saveCurrent} /></>,
         connections: connectionUi,
         memory: <><StoryMemoryPanel embedded ref={memoryPanelRef} onDirtyChange={onMemoryDirtyChange}
           key={`memory:${state.workspace.project.id}:${state.editorSession}`} memory={state.workspace.project.storyMemory}
@@ -471,7 +538,7 @@ export function WorkspaceApp({
           }} />,
         backup: <>{savedWorksUi}{trashUi}<LibraryBackupPanel disabled={!editable} onExport={async () => {
           const saved = await saveCurrent(); if (!saved.ok) throw new Error("保存できません。"); return exportLibrary();
-        }} onImport={async (bundle) => { const saved = await saveCurrent(); return saved.ok ? importLibrary(bundle) : saved; }} />
+        }} onImport={async (bundle, password) => { const saved = await saveCurrent(); return saved.ok ? importLibrary(bundle, password) : saved; }} />
           <SyncPanel key={`sync:${state.workspace.project.id}`} actions={syncActions} disabled={!editable} onSave={saveCurrent} onImport={importLibrary} transport={offlineShell ? undefined : syncTransport} /></>,
       }}
       editor={<div className={styles.editorPanel} id="workspace-editor" role="tabpanel" aria-label={state.workspace.project.title}>

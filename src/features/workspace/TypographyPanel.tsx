@@ -22,7 +22,7 @@ function ManuscriptPreview({ body }: { body: ManuscriptDocument }) {
       : mark?.type === "emphasis" ? <span className={styles.emphasis} key={part}>{node.text}</span> : <span key={part}>{node.text}</span>;
   })}{!("content" in paragraph) ? <br /> : null}</p>);
 }
-export function TypographyPanel({ editor, context, active, getCurrentSnapshot }: Readonly<{ editor: Editor | null; context: SelectionCaptureContext; active: boolean; getCurrentSnapshot: () => WorkspaceSnapshot | null }>) {
+export function TypographyPanel({ editor, context, active, getCurrentSnapshot, confirmExport }: Readonly<{ editor: Editor | null; context: SelectionCaptureContext; active: boolean; confirmExport?: () => boolean; getCurrentSnapshot: () => WorkspaceSnapshot | null }>) {
   const subscribe = useCallback((notify: () => void) => { if (!editor) return () => undefined; editor.on("transaction", notify); return () => { editor.off("transaction", notify); }; }, [editor]);
   const getState = useCallback(() => editor && !editor.isDestroyed ? editor.state : null, [editor]);
   const state = useSyncExternalStore(subscribe, getState, () => null);
@@ -61,6 +61,7 @@ export function TypographyPanel({ editor, context, active, getCurrentSnapshot }:
     } catch (error: unknown) { setExportPreview(null); setMessage(error instanceof Error ? error.message : "変換できませんでした。"); }
   }
   function download() {
+    if (confirmExport && !confirmExport()) { setMessage("書き出しを取り消しました。"); return; }
     const workspace = getCurrentSnapshot();
     if (!workspace || !exportPreview || composing.current || editor?.view.composing || exportPreview.format !== format || exportPreview.all !== allChapters || exportPreview.source !== exportSource(workspace, allChapters)) { setMessage("原稿または出力条件が変わりました。出力を再確認してください。"); return; }
     downloadWorkspaceFile({ contents: exportPreview.text, filename: `${format}-${allChapters ? "all-chapters" : "chapter"}.txt`, mimeType: "text/plain;charset=utf-8" });

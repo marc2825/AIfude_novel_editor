@@ -7,8 +7,10 @@ import type { WorkspaceActionResult } from "./use-workspace";
 import { HelpHeading } from "../ui/HelpTip";
 
 export function LibraryBackupPanel({ disabled, onExport, onImport }: Readonly<{ disabled: boolean;
-  onExport: () => Promise<LibraryBackup>; onImport: (bundle: LibraryBackup) => Promise<WorkspaceActionResult>;
+  onExport: () => Promise<LibraryBackup>; onImport: (bundle: LibraryBackup, password?: string) => Promise<WorkspaceActionResult>;
 }>) {
+  // A backup with secret works waits here for the password it was made with.
+  const [pending, setPending] = useState<LibraryBackup | null>(null); const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false); const busyRef = useRef(false); const [feedback, setFeedback] = useState(""); const inputRef = useRef<HTMLInputElement>(null);
   async function run(action: () => Promise<void>) {
     if (disabled || busyRef.current) return;
@@ -32,8 +34,21 @@ export function LibraryBackupPanel({ disabled, onExport, onImport }: Readonly<{ 
         const bundle = await readLibraryBackup(file);
         if (!window.confirm(`${bundle.workspaces.length}作品とごみ箱${bundle.trash.length}件をコピーとして追加しますか？ 既存作品は上書きされません。`)) { setFeedback("復元を取り消しました。"); return; }
         const result = await onImport(bundle); setFeedback(result.message ?? (result.ok ? "復元しました。" : "復元できませんでした。"));
+        if (result.needsPassword) setPending(bundle);
       });
     }} />
+    {pending ? <form onSubmit={(event) => {
+      event.preventDefault();
+      const bundle = pending;
+      void run(async () => {
+        const result = await onImport(bundle, password); setFeedback(result.message ?? (result.ok ? "復元しました。" : "復元できませんでした。"));
+        if (!result.needsPassword) { setPending(null); setPassword(""); }
+      });
+    }}>
+      <label>バックアップ作成時のパスワード<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+      <button type="submit" disabled={disabled || busy || password.length === 0}>パスワードを入力して復元</button>
+      <button type="button" disabled={busy} onClick={() => { setPending(null); setPassword(""); setFeedback("復元を取り消しました。"); }}>取り消す</button>
+    </form> : null}
     {feedback ? <p role="status">{feedback}</p> : null}
   </section>;
 }

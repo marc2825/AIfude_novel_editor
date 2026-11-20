@@ -4,6 +4,7 @@ import { parseWorkspaceSnapshot, type WorkspaceSnapshot } from "../domain/worksp
 import { WORKSPACES_STORE_NAME, WORKSPACE_FILES_STORE_NAME, WORKSPACE_HISTORY_STORE_NAME, WORKSPACE_TRASH_STORE_NAME, WORKSPACE_SYNC_STORE_NAME, type OpenWorkspaceDatabase } from "./indexeddb";
 import { parseHistoryEntry, type WritingHistoryEntry } from "./writing-history";
 import type { StoredWorkspaceReference } from "./workspace-repository";
+import { SecretStateError } from "./secret-errors";
 
 export const MAX_TRASH_ENTRIES = 200;
 const entrySchema = z.object({ schemaVersion: z.literal(1), id: z.uuid(), kind: z.enum(["workspace", "chapter"]),
@@ -44,6 +45,7 @@ export class TrashRepository {
       if (!current || keys[0] !== current.project.id || current.document.id !== next.document.id ||
           current.document.chapterIds.length !== next.document.chapterIds.length + 1 || !current.document.chapterIds.includes(removedId) ||
           next.document.chapterIds.includes(removedId) || next.document.chapterIds.some((id) => !current.document.chapterIds.includes(id))) throw new Error("章の削除範囲が不正です。");
+      if ((current.secret === undefined) !== (next.secret === undefined)) throw new SecretStateError();
       const trash = tx.objectStore(WORKSPACE_TRASH_STORE_NAME);
       if (await trash.count() >= MAX_TRASH_ENTRIES) throw new Error("ごみ箱が満杯です。不要な項目を完全削除してください。");
       const entry = createTrashEntry(current, removedId);
@@ -90,6 +92,21 @@ export class TrashRepository {
       await active.put(saved, saved.project.id); await trash.delete(entryId); await tx.done; return saved;
     } catch (error: unknown) { try { tx.abort(); } catch { /* Finished. */ } await tx.done.catch(() => undefined); throw error; }
   }
+  /** Restore a chapter of a secret work. The caller builds and seals the next shell (WebCrypto cannot run inside the transaction). */
+  async restoreChapterPrepared(reference: StoredWorkspaceReference, entryId: string, nextValue: WorkspaceSnapshot): Promise<WorkspaceSnapshot> {
+    const next = parseWorkspaceSnapshot(nextValue);
+    const tx = this.database.transaction([WORKSPACES_STORE_NAME, WORKSPACE_TRASH_STORE_NAME], "readwrite", { durability: "strict" });
+    try {
+      const active = tx.objectStore(WORKSPACES_STORE_NAME); const keys = await active.getAllKeys();
+      const current = keys.length === 1 ? parseWorkspaceSnapshot(await active.get(keys[0])) : null; verifyReference(current, reference);
+      const trash = tx.objectStore(WORKSPACE_TRASH_STORE_NAME); const entry = parseTrashEntry(await trash.get(entryId));
+      if (!current || !current.secret || !next.secret || entry.kind !== "chapter" || entry.projectId !== current.project.id || next.project.id !== current.project.id ||
+          next.document.id !== current.document.id || next.storageVersion !== current.storageVersion || next.document.chapterIds.length !== current.document.chapterIds.length + 1 ||
+          current.document.chapterIds.some((id) => !next.document.chapterIds.includes(id))) throw new SecretStateError();
+      const saved = parseWorkspaceSnapshot({ ...next, storageVersion: nextVersion(current.storageVersion) });
+      await active.put(saved, saved.project.id); await trash.delete(entryId); await tx.done; return saved;
+    } catch (error: unknown) { try { tx.abort(); } catch { /* Finished. */ } await tx.done.catch(() => undefined); throw error; }
+  }
   async restoreWorkspace(reference: StoredWorkspaceReference | null, entryId: string): Promise<WorkspaceSnapshot> {
     const tx = this.database.transaction([WORKSPACES_STORE_NAME, WORKSPACE_FILES_STORE_NAME, WORKSPACE_HISTORY_STORE_NAME, WORKSPACE_TRASH_STORE_NAME], "readwrite", { durability: "strict" });
     try {
@@ -100,6 +117,8 @@ export class TrashRepository {
       const files = tx.objectStore(WORKSPACE_FILES_STORE_NAME);
       if (entry.kind !== "workspace") throw new Error("作品の復元対象が不正です。");
       const collision = current?.project.id === entry.projectId || await files.get(entry.projectId) !== undefined;
+      // A shell's sealed writing is bound to its IDs, so it cannot be restored as a re-identified copy.
+      if (collision && entry.snapshot.secret) throw new Error("同じ作品が残っているため、シークレット作品は復元できません。元の作品をごみ箱へ移してから復元してください。");
       const identities = new Map<string, string>();
       const source = collision ? cloneWorkspace(entry.snapshot, identities) : entry.snapshot;
       const snapshot = parseWorkspaceSnapshot({ ...source, storageVersion: 0, project: { ...source.project, aiConsent: null, contextRevision: nextVersion(source.project.contextRevision), updatedAt: new Date().toISOString() } });
