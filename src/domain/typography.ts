@@ -39,7 +39,8 @@ export function annotationProblems(body: ManuscriptDocument): string[] {
   }));
 }
 /** pixiv: only the ruby tag documented in pixiv's 2014-12-24 announcement; readings use kana, kanji or Latin letters. */
-const PIXIV_READING = /^[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ーA-Za-zＡ-Ｚａ-ｚ]+$/u;
+// Decomposed kana (か + U+3099) is still kana: test the NFC form and allow combining voiced marks that have no precomposed form.
+const PIXIV_READING = /^[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ーA-Za-zＡ-Ｚａ-ｚ\u3099\u309A]+$/u;
 export function publicationText(bodyValue: ManuscriptDocument, format: PublicationFormat): string {
   const body = manuscriptDocumentSchema.parse(bodyValue);
   const problems = annotationProblems(body); if (problems.length) throw new Error(problems[0]);
@@ -48,7 +49,7 @@ export function publicationText(bodyValue: ManuscriptDocument, format: Publicati
     // No undocumented escape is guessed. Original literals are always preserved in JSON/plain TXT.
     if (/[｜|《》]/u.test(node.text) || (format === "narou" && /[（(]/u.test(node.text)) || (format === "pixiv" && /[[\]]/u.test(node.text))) throw new Error(`段落${index + 1}に投稿記法と衝突する文字があります。本文を変えずに出力できないため、JSON/プレーンテキストを使ってください。`);
     if (mark?.type === "ruby" && format === "pixiv") {
-      if (node.text.includes(">") || !PIXIV_READING.test(mark.attrs.reading)) throw new Error(`段落${index + 1}：「${node.text}」のルビはpixivの記法で出力できません。読みはひらがな・カタカナ・漢字・英字だけにし、親文字に「>」を含めないでください。`);
+      if (node.text.includes(">") || !PIXIV_READING.test(mark.attrs.reading.normalize("NFC"))) throw new Error(`段落${index + 1}：「${node.text}」のルビはpixivの記法で出力できません。読みはひらがな・カタカナ・漢字・英字だけにし、親文字に「>」を含めないでください。`);
       return `[[rb:${node.text} > ${mark.attrs.reading}]]`;
     }
     if (mark?.type === "ruby") {

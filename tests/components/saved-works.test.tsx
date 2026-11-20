@@ -40,4 +40,23 @@ describe("help tip", () => {
     fireEvent.pointerEnter(button.parentElement as HTMLElement, { pointerType: "mouse" }); expect(screen.getByRole("tooltip")).toBeInTheDocument();
     fireEvent.pointerLeave(button.parentElement as HTMLElement, { pointerType: "mouse" }); expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
+  it("closes on the second click even though the click focused it, and follows the button on scroll near the bottom edge", () => {
+    render(<HelpTip label="同期">同期は初期OFFです。</HelpTip>);
+    const button = screen.getByRole("button", { name: "同期の説明" });
+    fireEvent.pointerDown(button); fireEvent.focus(button); fireEvent.click(button);
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    fireEvent.pointerDown(button); fireEvent.click(button);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    let top = 740;
+    vi.spyOn(button, "getBoundingClientRect").mockImplementation(() => ({ top, bottom: top + 24, left: 100, right: 124, width: 24, height: 24, x: 100, y: top, toJSON: () => ({}) }));
+    const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) { return this.getAttribute("role") === "tooltip" ? 100 : 0; });
+    fireEvent.pointerDown(button); fireEvent.click(button);
+    expect(screen.getByRole("tooltip").style.top).toBe(`${740 - 6 - 100}px`);
+    top = 300; fireEvent.scroll(window);
+    expect(screen.getByRole("tooltip").style.top).toBe(`${300 + 24 + 6}px`);
+    top = -200; fireEvent.scroll(window);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    height.mockRestore();
+  });
 });

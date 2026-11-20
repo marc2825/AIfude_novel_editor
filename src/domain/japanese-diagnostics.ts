@@ -23,6 +23,8 @@ const stopWords = new Set([...particles, "た", "だ", "です", "ます", "す�
 const redundant = ["頭痛が痛い", "一番最初", "まず最初", "後で後悔", "過半数を超える", "違和感を感じる"];
 const spellings = [["出来る", "できる"], ["分かる", "わかる"], ["下さい", "ください"], ["すべて", "全て"]];
 const connectors = ["しかし", "そして", "だから", "それから", "けれど", "だが", "つまり"];
+/** Particles whose doubled form is almost never intended; checked on word tokens so 「彼ががんばる」 stays quiet. */
+const doubledParticles = new Set(["を", "が", "に", "で"]);
 
 /** UTF-16 offsets into the exact input. Nothing is normalized or corrected. */
 export function analyzeJapanese(text: string): DiagnosticAnalysis {
@@ -37,7 +39,6 @@ export function analyzeJapanese(text: string): DiagnosticAnalysis {
   let count = 0, total = 0, longest = 0, short = 0, long = 0;
   let previousEnding = "", endingRun = 0, previousConnector = "";
   const recentWords = new Map<string, number[]>();
-  const seenSpellings = new Map<string, number>();
   for (const sentence of sentences.segment(text)) {
     const trimmed = sentence.segment.trim();
     if (!trimmed) continue;
@@ -63,9 +64,10 @@ export function analyzeJapanese(text: string): DiagnosticAnalysis {
     for (let index = 0; index < tokens.length; index++) {
       const token = tokens[index];
       const from = sentence.index + token.index;
-      seenSpellings.set(token.segment, from);
       if (particles.has(token.segment)) particleCount.set(token.segment, (particleCount.get(token.segment) ?? 0) + 1);
       const previous = tokens[index - 1];
+      if (previous && doubledParticles.has(token.segment) && previous.segment === token.segment && previous.index + previous.segment.length === token.index) add("typo", token.segment + token.segment,
+        sentence.index + previous.index, from + token.segment.length, "誤字の候補", `助詞「${token.segment}」が続いています`, "入力の重複でないか確認してください。意図した表現なら無視できます。");
       if (previous && previous.segment === token.segment && previous.index + previous.segment.length === token.index &&
           Array.from(token.segment).length >= 2 && /\p{Script=Han}/u.test(token.segment)) add("typo", token.segment, sentence.index + previous.index, from + token.segment.length,
         "誤字の候補", `「${token.segment}」が続けて2回あります`, "入力の重複でないか確認してください。意図した反復なら無視できます。");
@@ -85,12 +87,12 @@ export function analyzeJapanese(text: string): DiagnosticAnalysis {
   }
   for (const expression of redundant) for (const match of text.matchAll(new RegExp(expression, "gu"))) add("redundancy", expression, match.index, match.index + expression.length,
     "冗長表現の確認", `登録表現「${expression}」に一致`, "強調や台詞の意図を確認し、必要な場合だけ簡潔にしてください。");
-  for (const variants of spellings) if (variants.every((variant) => seenSpellings.has(variant))) {
-    for (const variant of variants) {
-      const from = seenSpellings.get(variant);
-      if (from === undefined) continue;
-      add("spelling", variants.join("/"), from, from + variant.length, "表記ゆれの確認", `「${variants.join(" / ")}」が同じ章にあります`, "文脈や話者による使い分けなら維持してください。");
-    }
+  // Match the raw text: 「下さい」「ください」 are split into several word tokens and never appear as one token.
+  for (const variants of spellings) {
+    const offsets = variants.map((variant) => text.indexOf(variant));
+    if (offsets.some((offset) => offset < 0)) continue;
+    variants.forEach((variant, index) => add("spelling", variants.join("/"), offsets[index], offsets[index] + variant.length,
+      "表記ゆれの確認", `「${variants.join(" / ")}」が同じ章にあります`, "文脈や話者による使い分けなら維持してください。"));
   }
   const pairs: Record<string, string> = { "「": "」", "『": "』", "（": "）", "(": ")", "【": "】", "［": "］" };
   const closing = new Set(Object.values(pairs));
@@ -109,8 +111,6 @@ export function analyzeJapanese(text: string): DiagnosticAnalysis {
     offset += character.length;
   }
   for (const opening of stack) add("bracket", opening.character, opening.offset, opening.offset + 1, "括弧の対応を確認", `「${opening.character}」が閉じられていません`, "章をまたぐ台詞など意図した省略なら無視できます。");
-  for (const match of text.matchAll(/をを|がが|にに|でで/gu)) add("typo", match[0], match.index, match.index + match[0].length, "誤字の候補",
-    `助詞「${match[0].slice(0, 1)}」が続いています`, "入力の重複でないか確認してください。語の一部や意図した表現なら無視できます。");
   for (const match of text.matchAll(/[、。]{2,}/gu)) add("punctuation", match[0], match.index, match.index + match[0].length, "句読点の連続", `「${match[0]}」が連続しています`, "間や余韻の表現なら維持してください。");
   const characters = Array.from(text).length;
   return { issues: issues.sort((a, b) => a.from - b.from || a.rule.localeCompare(b.rule)), truncated,

@@ -10,6 +10,9 @@ test("moves a saved, non-open work to the trash after confirmation and keeps the
   const list = page.getByRole("region", { name: "保存済みの作品" }).getByRole("listitem");
   await expect(list).toHaveCount(2);
   const other = list.filter({ hasNotText: "開いています" });
+  await page.getByRole("button", { name: "ごみ箱・削除の復元" }).click();
+  const trash = page.getByRole("region", { name: "ごみ箱" });
+  await expect(trash.getByText("ごみ箱は空です。")).toBeVisible();
   page.once("dialog", (dialog) => dialog.dismiss());
   await other.getByRole("button", { name: /ごみ箱へ移す$/u }).click(); await expect(list).toHaveCount(2);
   page.once("dialog", (dialog) => dialog.accept());
@@ -17,8 +20,7 @@ test("moves a saved, non-open work to the trash after confirmation and keeps the
   await expect(page.getByText("作品をごみ箱へ移しました。ごみ箱から復元できます。")).toBeVisible();
   await expect(list).toHaveCount(1); await expect(editor).toHaveText("開いている作品の本文");
   await expect(page.getByRole("tablist", { name: "開いている作品" }).getByRole("tab")).toHaveCount(1);
-  await page.getByRole("button", { name: "ごみ箱・削除の復元" }).click();
-  await expect(page.getByRole("region", { name: "ごみ箱" }).getByRole("listitem")).toHaveCount(1);
+  await expect(trash.getByRole("listitem")).toHaveCount(1);
 });
 
 test("exports pixiv ruby only after confirmation and refuses unsupported emphasis", async ({ page }) => {

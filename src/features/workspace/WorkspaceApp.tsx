@@ -328,7 +328,7 @@ export function WorkspaceApp({
     files={state.phase === "ready" || state.phase === "deleted" ? state.files : []}
     onOpen={switchWorkspace} onTrash={trashSavedWork} onTrashActive={guardedDelete} />;
   const trashUi = <TrashPanel disabled={state.phase === "ready" ? state.access !== "editable" || state.operation !== "idle" : state.phase !== "deleted"}
-    refreshKey={state.phase === "ready" ? `${state.workspace.project.id}:${state.workspace.document.chapterIds.join(",")}` : state.phase}
+    refreshKey={`${state.phase === "ready" ? `${state.workspace.project.id}:${state.workspace.document.chapterIds.join(",")}` : state.phase}|${state.phase === "ready" || state.phase === "deleted" ? state.files.map((file) => file.projectId).join(",") : ""}`}
     projectId={state.phase === "ready" ? state.workspace.project.id : null} onList={listTrash} onPurge={purgeTrash}
     onRestore={async (entry) => {
       if (entry.kind === "chapter") invalidateConnection();

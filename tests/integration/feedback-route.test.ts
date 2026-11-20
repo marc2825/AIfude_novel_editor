@@ -43,7 +43,12 @@ describe("read-only Feedback boundary", () => {
     const response = await handleFeedbackPost(request({ ...input, focus }), dependencies(generate));
     expect(response.status).toBe(200); expect(feedbackResponseSchema.parse(await response.json()).comments).toHaveLength(1);
   });
-  it.each([{ text: "あ".repeat(6_001) }, { text: "" }, { text: "\ud800" }, { storyMemory: {} }, { instruction: "書き換えて" }, { focus: "style" }])("rejects invalid input before generation", async (extra) => {
+  it.each([["あ".repeat(6_000)], ["🙂".repeat(4_999)], ['"'.repeat(6_000)]])("never rejects schema-valid text by the prompt size budget", async (text) => {
+    const generate = vi.fn(async (): Promise<EditingProviderResult> => ({ status: "completed", output, usage: null }));
+    const response = await handleFeedbackPost(request({ ...input, text, focus: "naturalness" }), dependencies(generate));
+    expect(response.status).toBe(200); expect(generate).toHaveBeenCalledOnce();
+  });
+  it.each([{ text: "🙂".repeat(6_000) }, { text: "あ".repeat(6_001) }, { text: "" }, { text: "\ud800" }, { storyMemory: {} }, { instruction: "書き換えて" }, { focus: "style" }])("rejects invalid input before generation", async (extra) => {
     const generate = vi.fn(); const response = await handleFeedbackPost(request({ ...input, ...extra }), dependencies(generate));
     expect(response.status).toBe(400); expect(generate).not.toHaveBeenCalled();
   });

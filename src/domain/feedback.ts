@@ -2,6 +2,12 @@ import { z } from "zod";
 import { aiEditRequestSchema, aiEditSuccessResponseSchema } from "./ai-edit";
 
 export const FEEDBACK_TEXT_LIMIT = 6_000;
+/** UTF-8 bytes of the manuscript as encoded in the prompt JSON. With the fixed instructions this stays under the 24,000 input budget. */
+export const FEEDBACK_TEXT_JSON_BYTE_LIMIT = 20_000;
+const utf8 = new TextEncoder();
+export function feedbackTextFitsPrompt(value: string): boolean {
+  return utf8.encode(JSON.stringify(value)).byteLength <= FEEDBACK_TEXT_JSON_BYTE_LIMIT;
+}
 const boundedText = (maximum: number) => z.string().refine((value) => value.isWellFormed() && Array.from(value).length <= maximum);
 export const FEEDBACK_FOCUSES = [
   { id: "general", label: "総合" },
@@ -11,7 +17,7 @@ export const FEEDBACK_FOCUSES = [
 export type FeedbackFocus = typeof FEEDBACK_FOCUSES[number]["id"];
 export const feedbackFocusSchema = z.enum(["general", "typos", "naturalness"]);
 export const feedbackRequestSchema = z.object({
-  schemaVersion: z.literal(1), requestId: z.uuid(), text: boundedText(FEEDBACK_TEXT_LIMIT).refine((value) => value.trim().length > 0),
+  schemaVersion: z.literal(1), requestId: z.uuid(), text: boundedText(FEEDBACK_TEXT_LIMIT).refine((value) => value.trim().length > 0).refine(feedbackTextFitsPrompt),
   focus: feedbackFocusSchema.optional(),
   consent: aiEditRequestSchema.shape.consent, modelId: aiEditRequestSchema.shape.modelId,
   allowPaidApi: aiEditRequestSchema.shape.allowPaidApi, connectionId: aiEditRequestSchema.shape.connectionId,

@@ -55,6 +55,8 @@ describe("Japanese structured typography", () => {
     const ruby = (base: string, reading: string): ManuscriptDocument => ({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: base, marks: [{ type: "ruby", attrs: { base, reading } }] }] }] });
     expect(() => publicationText(ruby("葵", "あ・お"), "pixiv")).toThrow("pixiv"); expect(() => publicationText(ruby("a>b", "えい"), "pixiv")).toThrow("pixiv");
     expect(publicationText(ruby("pixiv", "ピクシブ"), "pixiv")).toBe("[[rb:pixiv > ピクシブ]]");
+    expect(publicationText(ruby("蛾", "か\u3099"), "pixiv")).toBe("[[rb:蛾 > か\u3099]]");
+    expect(publicationText(ruby("鏡", "ㇷ\u309A"), "pixiv")).toBe("[[rb:鏡 > ㇷ\u309A]]");
     expect(() => parsePublicationText("[[newpage]]", "pixiv")).toThrow();
   });
   it("round-trips supported Unicode ruby without splitting graphemes", () => {

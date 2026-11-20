@@ -33,6 +33,14 @@ describe("Japanese diagnostic observations", () => {
     expect(typos.map((issue) => text.slice(issue.from, issue.to))).toEqual(["をを", "学校学校"]);
     expect(typos.every((issue) => issue.title === "誤字の候補")).toBe(true);
     expect(analyzeJapanese("人々が来た。時々笑う。").issues.filter((issue) => issue.rule === "typo")).toEqual([]);
+    expect(analyzeJapanese("彼ががんばる。母ににっこり笑う。どこででも会える。").issues.filter((issue) => issue.rule === "typo")).toEqual([]);
+  });
+  it("reports spelling variants that span several word tokens and stays quiet for a single form", () => {
+    const text = "水を下さい。水をください。出来る。できる。";
+    const spelling = analyzeJapanese(text).issues.filter((issue) => issue.rule === "spelling");
+    expect(spelling.map((issue) => text.slice(issue.from, issue.to))).toEqual(["下さい", "ください", "出来る", "できる"]);
+    expect(new Set(spelling.map((issue) => issue.key))).toEqual(new Set(["下さい/ください", "出来る/できる"]));
+    expect(analyzeJapanese("水をください。もう一杯ください。").issues.filter((issue) => issue.rule === "spelling")).toEqual([]);
   });
   it("keeps emoji and newline offsets exact and within UTF-16 boundaries", () => {
     fc.assert(fc.property(fc.array(fc.constantFrom("🙂", "が", "。", "「", "」", "東京", "\n", "一番最初"), { maxLength: 100 }), (parts) => {

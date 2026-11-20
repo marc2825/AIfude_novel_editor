@@ -2,7 +2,7 @@
 
 import type { Editor } from "@tiptap/core";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { FEEDBACK_FOCUSES, FEEDBACK_TEXT_LIMIT, feedbackRequestSchema, uniqueQuoteRange, type FeedbackFocus, type FeedbackResponse } from "../../domain/feedback";
+import { FEEDBACK_FOCUSES, FEEDBACK_TEXT_LIMIT, feedbackRequestSchema, feedbackTextFitsPrompt, uniqueQuoteRange, type FeedbackFocus, type FeedbackResponse } from "../../domain/feedback";
 import { HelpHeading } from "../ui/HelpTip";
 import type { AiConsent, AiModelPreference } from "../../domain/workspace";
 import { captureSearch, isSearchCurrent, type SearchSnapshot } from "../editor/search-replace";
@@ -15,6 +15,7 @@ import { requestFeedback } from "./feedback-client";
 import { selectDiagnostic } from "./diagnostic-anchors";
 import styles from "./Feedback.module.css";
 
+const TOO_LARGE = `対象が長すぎます。${FEEDBACK_TEXT_LIMIT.toLocaleString("ja-JP")}文字以内で、絵文字などが多い場合はさらに短い章または選択範囲を指定してください。`;
 type Source = { snapshot: SearchSnapshot; text: string; offset: number; selectionRevision: number; contextRevision: number };
 type Props = Readonly<{
   editor: Editor | null; contextRevision: number; runtime: PublicAiRuntime; consent: AiConsent | null; modelPreference: AiModelPreference;
@@ -63,7 +64,8 @@ function FeedbackSession({ editor, contextRevision, runtime, consent, modelPrefe
     const guard = getEditGuardState(editor.state);
     if (start === null || end === null || !guard || !text.slice(start, end).trim()) { setMessage("対象の本文を入力・選択してください。"); return; }
     const value = { snapshot, text: text.slice(start, end), offset: start, selectionRevision: guard.selectionRevision, contextRevision };
-    sourceRef.current = value; setSource(value); setMessage("送信範囲を確認してから生成してください。本文は変更しません。");
+    sourceRef.current = value; setSource(value);
+    setMessage(Array.from(value.text).length > FEEDBACK_TEXT_LIMIT || !feedbackTextFitsPrompt(value.text) ? TOO_LARGE : "送信範囲を確認してから生成してください。本文は変更しません。");
   }
   async function generate() {
     if (!source || !current(source) || busy || composing.current || editor?.view.composing || !canUseAiRuntime(runtime, consent, modelPreference)) return;
@@ -71,7 +73,7 @@ function FeedbackSession({ editor, contextRevision, runtime, consent, modelPrefe
       modelId: requestModelIdForRuntime(runtime, modelPreference), consent: requestConsentForRuntime(runtime, consent),
       ...(runtime.paidApiEnabled ? { allowPaidApi: true } : {}), ...(runtime.connectionId ? { connectionId: runtime.connectionId } : {}),
     });
-    if (!request.success) { setMessage(`対象は${FEEDBACK_TEXT_LIMIT}文字以内です。短い章または選択範囲を指定してください。`); return; }
+    if (!request.success) { setMessage(TOO_LARGE); return; }
     const controller = new AbortController(); const id = request.data.requestId;
     active.current = { id, controller }; setBusy(true); setResponse(null); setMessage("AIコメントを生成中です。本文編集は続けられます。");
     const timeout = setTimeout(() => {
@@ -99,7 +101,7 @@ function FeedbackSession({ editor, contextRevision, runtime, consent, modelPrefe
     </div>
     {source ? <details><summary>送信する本文（{Array.from(source.text).length}文字）</summary><p className={styles.text}>{source.text}</p></details> : null}
     <p>提供元：{runtime.providerId ?? "未接続"} / {model?.displayName ?? "モデル利用不可"}</p>
-    <button type="button" disabled={!source || busy || !canUseAiRuntime(runtime, consent, modelPreference) || Array.from(source.text).length > FEEDBACK_TEXT_LIMIT} onClick={() => void generate()}>AIコメントを生成</button>
+    <button type="button" disabled={!source || busy || !canUseAiRuntime(runtime, consent, modelPreference) || Array.from(source.text).length > FEEDBACK_TEXT_LIMIT || !feedbackTextFitsPrompt(source.text)} onClick={() => void generate()}>AIコメントを生成</button>
     {busy ? <button type="button" onClick={() => { cancel(); setMessage("生成を中止しました。"); }}>Feedbackを中止</button> : null}
     <p role="status">{message}</p>
     {response && source ? <section aria-label="AIの主観的コメント">
