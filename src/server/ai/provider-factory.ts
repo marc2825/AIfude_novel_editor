@@ -34,6 +34,7 @@ export function createConfiguredEditingProvider(
     case "gemini":
     case "xai":
     case "deepseek":
+    case "meta":
       return createCloudApiEditingProvider(provider);
     case "openai":
       return createOpenAiEditingProvider({

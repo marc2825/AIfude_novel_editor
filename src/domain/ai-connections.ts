@@ -1,21 +1,24 @@
 import { z } from "zod";
 import { AI_MODEL_DEFINITIONS, AI_PROVIDER_DEFINITIONS, CHATGPT_MODEL_DEFINITION, CONFIGURED_CLOUD_MODELS, LOCAL_LLM_MODEL_DEFINITION, getAiModelsForProvider, isPaidApiProvider, type PublicAiRuntime } from "./ai-models";
 
-export const CONNECTION_MODES = ["disabled", "mock", "chatgpt", "claude", "local", "openai", "anthropic", "gemini", "xai", "deepseek"] as const;
+export const CONNECTION_MODES = ["disabled", "mock", "chatgpt", "claude", "local", "openai", "anthropic", "gemini", "xai", "deepseek", "meta"] as const;
 export const connectionModeSchema = z.enum(CONNECTION_MODES);
 export type ConnectionMode = z.infer<typeof connectionModeSchema>;
-export const MODEL_FIELDS = ["chatgpt", "claude", "local", "openai", "anthropic", "gemini", "xai", "deepseek"] as const;
+export const MODEL_FIELDS = ["chatgpt", "claude", "local", "openai", "anthropic", "gemini", "xai", "deepseek", "meta"] as const;
+/** Meta "-contributor" model IDs let Meta train on the content; manuscripts must not be sent to them. */
+export function isTrainingContributorModel(id: string): boolean { return /-contributor$/iu.test(id.trim()); }
 const model = z.string().max(256).regex(/^[A-Za-z0-9._:/-]*$/u);
 export const connectionSettingsSchema = z.object({
   primary: connectionModeSchema,
-  comparison: z.array(connectionModeSchema.exclude(["disabled"])).max(9).refine((ids) => ids.length !== 1 && new Set(ids).size === ids.length),
-  models: z.object({ chatgpt: model, claude: model, local: model, openai: model, anthropic: model, gemini: model, xai: model, deepseek: model }).strict(),
+  comparison: z.array(connectionModeSchema.exclude(["disabled"])).max(CONNECTION_MODES.length - 1).refine((ids) => ids.length !== 1 && new Set(ids).size === ids.length),
+  // Settings saved before Meta Muse was added have no `meta` field.
+  models: z.object({ chatgpt: model, claude: model, local: model, openai: model, anthropic: model, gemini: model, xai: model, deepseek: model, meta: model.refine((id) => !isTrainingContributorModel(id)).default("") }).strict(),
   localBaseUrl: z.string().max(256),
 }).strict();
 export type ConnectionSettings = z.infer<typeof connectionSettingsSchema>;
 export const publicConnectionStateSchema = z.object({
-  revision: z.uuid().nullable(), settings: connectionSettingsSchema, availableModes: z.array(connectionModeSchema).max(10),
-  paidApiAllowed: z.boolean(), apiKeysConfigured: z.object({ openai: z.boolean(), anthropic: z.boolean(), gemini: z.boolean(), xai: z.boolean(), deepseek: z.boolean() }).strict(),
+  revision: z.uuid().nullable(), settings: connectionSettingsSchema, availableModes: z.array(connectionModeSchema).max(CONNECTION_MODES.length - 1),
+  paidApiAllowed: z.boolean(), apiKeysConfigured: z.object({ openai: z.boolean(), anthropic: z.boolean(), gemini: z.boolean(), xai: z.boolean(), deepseek: z.boolean(), meta: z.boolean() }).strict(),
 }).strict();
 export type PublicConnectionState = z.infer<typeof publicConnectionStateSchema>;
 export const connectionActionSchema = z.discriminatedUnion("action", [
@@ -46,7 +49,7 @@ export function publicRuntimeForConnections(state: PublicConnectionState): Publi
     const revision = state.revision ?? "environment";
     if (mode === "disabled" || !state.availableModes.includes(mode)) return { settingsRevision: revision, available: false, defaultModelId: null, providerId: null, models: [], externalDataTransfer: false };
     const slot = mode === "chatgpt" ? CHATGPT_MODEL_DEFINITION : mode === "local" ? LOCAL_LLM_MODEL_DEFINITION : CONFIGURED_CLOUD_MODELS.find((item) => item.providerId === mode);
-    const models = slot ? [{ ...slot, displayName: `${connectionLabel(mode)}：${state.settings.models[mode === "chatgpt" || mode === "local" || mode === "claude" || mode === "anthropic" || mode === "gemini" || mode === "xai" || mode === "deepseek" ? mode : "openai"]}` }] : getAiModelsForProvider(mode);
+    const models = slot ? [{ ...slot, displayName: `${connectionLabel(mode)}：${state.settings.models[mode === "chatgpt" || mode === "local" || mode === "claude" || mode === "anthropic" || mode === "gemini" || mode === "xai" || mode === "deepseek" || mode === "meta" ? mode : "openai"]}` }] : getAiModelsForProvider(mode);
     const defaultModel = mode === "openai" ? AI_MODEL_DEFINITIONS.find((item) => item.id === state.settings.models.openai && item.providerId === "openai") : models[0];
     return { settingsRevision: revision, available: defaultModel !== undefined, defaultModelId: defaultModel?.id ?? null, providerId: mode, models, externalDataTransfer: mode !== "mock" && mode !== "local" };
   }

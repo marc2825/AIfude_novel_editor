@@ -3,12 +3,14 @@ import { z } from "zod";
 import { AI_EDIT_LIMITS } from "../../domain/limits";
 import type { EditingProvider, EditingProviderInput, EditingProviderResult } from "./provider";
 
-type CloudConfig = Readonly<{ apiKey: string; model: string; mode: "anthropic" | "gemini" | "xai" | "deepseek" }>;
+type CloudConfig = Readonly<{ apiKey: string; model: string; mode: "anthropic" | "gemini" | "xai" | "deepseek" | "meta" }>;
 const endpoints = Object.freeze({
   anthropic: "https://api.anthropic.com/v1/messages",
   gemini: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
   xai: "https://api.x.ai/v1/chat/completions",
   deepseek: "https://api.deepseek.com/chat/completions",
+  // Meta Model API (Muse), OpenAI-compatible Chat Completions: https://dev.meta.ai/docs/protocols/chat-completions
+  meta: "https://api.meta.ai/v1/chat/completions",
 });
 const chatResponse = z.object({ model: z.string().min(1).max(128).optional(), choices: z.array(z.object({ finish_reason: z.string(), message: z.object({
   role: z.literal("assistant"), content: z.string().nullable().optional(), refusal: z.string().nullable().optional(), tool_calls: z.array(z.unknown()).optional(),
@@ -66,7 +68,7 @@ export function createCloudApiEditingProvider(config: CloudConfig, fetchImplemen
         messages: [{ role: "user", content: input.prompt.inputDataJson }],
         output_config: { format: { type: "json_schema", schema: input.responseSchema } },
       } : {
-        model: config.model, max_tokens: input.outputTokenLimit, stream: false,
+        model: config.model, ...(config.mode === "meta" ? { max_completion_tokens: input.outputTokenLimit } : { max_tokens: input.outputTokenLimit }), stream: false,
         messages: [{ role: "system", content: system }, { role: "user", content: input.prompt.inputDataJson }],
         response_format: config.mode === "deepseek" ? { type: "json_object" } : { type: "json_schema", json_schema: { name: "llm_candidates", schema: input.responseSchema, strict: true } },
       };

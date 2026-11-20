@@ -71,6 +71,10 @@ UI/UX guidelinesは「approved OpenAI branding」を求めています。現在�
 
 設定例の `claude-sonnet-5` は、調査時点の [モデル文書](https://platform.claude.com/docs/en/models/sonnet-5/overview) ではlegacyモデルでした。公開前に有効なIDを確認してください。アプリが自動で置き換えることはありません。
 
+## Meta Muse API（2026-11-21）
+
+利用者が自分のAPIキーをサーバーに設定する有料APIです。[料金と制限](https://dev.meta.ai/docs/pricing-rate-limits) では、標準モードで送った内容をMetaのモデルの学習に使わないとしています。末尾が `-contributor` のモデルは学習に使われることがあるため、アプリで拒否します。送った内容の保持期間とZero Data Retentionの有無は、公開文書で確認できませんでした。利用できる国は [地域の利用方針](https://dev.meta.ai/legal/geographic-use-policy) で限られています。
+
 ## 共通の確認
 
 CLI本体や認証情報はソースに同梱しません。AIFUDEのライセンス（PolyForm Noncommercial License 1.0.0）は、外部サービスの利用権や提供元の承認を与えるものではありません。サブスクリプションがあれば任意の第三者アプリで使える、とは案内しません。

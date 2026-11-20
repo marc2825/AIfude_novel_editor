@@ -1,6 +1,6 @@
 "use client";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { CONNECTION_MODES, MODEL_FIELDS, connectionLabel, connectionSettingsSchema, DIAGNOSTIC_MESSAGES, publicRuntimeForConnections,
+import { CONNECTION_MODES, MODEL_FIELDS, connectionLabel, connectionSettingsSchema, DIAGNOSTIC_MESSAGES, isTrainingContributorModel, publicRuntimeForConnections,
   type ConnectionDiagnostic, type ConnectionMode, type ConnectionSettings, type PublicConnectionState } from "../../domain/ai-connections";
 import { isPaidApiProvider, type PublicAiRuntime } from "../../domain/ai-models";
 import type { WorkspaceActionResult } from "../workspace/use-workspace";
@@ -52,6 +52,7 @@ export const AiConnectionSettingsPanel = forwardRef<AiConnectionSettingsHandle, 
   async function save(reset = false): Promise<WorkspaceActionResult> {
     if (disabled || pending.current !== null || !draft) return { ok: false, message: "現在はAI設定を保存できません。" };
     const parsed = connectionSettingsSchema.safeParse(draft);
+    if (!reset && isTrainingContributorModel(draft.models.meta)) { setMessage("Meta Muse APIの「-contributor」付きモデルは、送った内容が学習に使われるため使えません。"); return { ok: false }; }
     if (!reset && !parsed.success) { setMessage("モデルID・比較対象の選択を確認してください。比較対象は0個または2個以上にしてください。"); return { ok: false }; }
     callbacks.current.onInvalidate(); setMessage(""); setDiagnostic(null);
     const own = ++generation.current; const abort = new AbortController(); pending.current = abort; setBusy(true);
@@ -98,7 +99,7 @@ export const AiConnectionSettingsPanel = forwardRef<AiConnectionSettingsHandle, 
         <HelpHeading level={3} label="モデルIDと接続の診断" help={<>接続先で使う正確なモデルIDを入力します。「接続を診断」は保存済みの設定で、モデル一覧や認証状態だけを確かめます。本文は送りません。</>}>モデルIDと接続の診断</HelpHeading>
         {MODEL_FIELDS.map((mode) => <div key={mode}>
           <label>{connectionLabel(mode)}のモデルID<input aria-label={`${connectionLabel(mode)}の接続モデルID`} value={draft.models[mode]} disabled={controlsDisabled} onChange={(event) => edit({ ...draft, models: { ...draft.models, [mode]: event.target.value } })} /></label>
-          {isPaidApiProvider(mode) ? <p>APIキー：{data.apiKeysConfigured[mode === "openai" || mode === "anthropic" || mode === "gemini" || mode === "xai" || mode === "deepseek" ? mode : "openai"] ? "サーバーに設定あり" : "サーバーに未設定"}</p> : null}
+          {isPaidApiProvider(mode) ? <p>APIキー：{data.apiKeysConfigured[mode === "openai" || mode === "anthropic" || mode === "gemini" || mode === "xai" || mode === "deepseek" || mode === "meta" ? mode : "openai"] ? "サーバーに設定あり" : "サーバーに未設定"}</p> : null}
           <button type="button" aria-label={`${connectionLabel(mode)}の接続を診断`} disabled={controlsDisabled || dirtyRef.current || (isPaidApiProvider(mode) && (!data.paidApiAllowed || !paidApiEnabled))} onClick={() => void diagnose(mode)}>接続を診断</button>
         </div>)}
         <label>ローカルLLMのURL<input aria-label="ローカルLLMの接続URL" value={draft.localBaseUrl} disabled={controlsDisabled} onChange={(event) => edit({ ...draft, localBaseUrl: event.target.value })} /></label>

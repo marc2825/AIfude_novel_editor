@@ -14,6 +14,7 @@
 | `gemini` | Gemini API | `GEMINI_API_KEY`、`GEMINI_MODEL` |
 | `xai` | Grok API | `XAI_API_KEY`、`XAI_MODEL` |
 | `deepseek` | DeepSeek API | `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL` |
+| `meta` | Meta Muse API | `META_API_KEY`、`META_MODEL` |
 | `mock` | デモ候補 | 認証不要、外部送信なし |
 | `disabled` | AI無効 | 本文編集・保存のみ |
 
@@ -21,7 +22,7 @@
 
 APIの料金は各社のサブスクリプション契約と別です。有料APIを使う場合は、サーバーで `AI_ENABLE_PAID_API=true` を設定し、画面でもAPI接続を有効にしてください。画面の許可は再読み込みや接続設定の保存でOFFに戻ります。接続失敗時に別のAIや有料APIへ自動で切り替わることはありません。
 
-Gemini・Grok・DeepSeekのサブスクリプション接続は未対応です。利用できるのは上表のAPI方式です。CLIを含む外部サービスの利用条件と未確認事項は [配布前の確認](PROVIDER_DISTRIBUTION_REVIEW.md) にまとめています。
+Gemini・Grok・DeepSeek・Meta Museのサブスクリプション接続は未対応です。利用できるのは上表のAPI方式です。CLIを含む外部サービスの利用条件と未確認事項は [配布前の確認](PROVIDER_DISTRIBUTION_REVIEW.md) にまとめています。
 
 ## ChatGPT
 
@@ -102,6 +103,8 @@ OpenAI APIで選べるモデルは `gpt-6-astra`、`gpt-5.6-sol`、`gpt-5.6-terr
 作品の「自動（サーバー既定）」は、接続先に設定したモデルを使うという意味です。文章に合わせた自動選択ではありません。利用できないモデルを選んだ場合は生成を止めます。別モデルへの自動切替はありません。
 
 OpenAI APIでは `store: false` を指定しますが、提供元で一切保持されないという保証ではありません。[APIのデータ取扱い](https://developers.openai.com/api/docs/guides/your-data) と、自分の契約・アカウント設定を確認してください。応答形式や上限の実装は [AI編集仕様](AI_EDITING.md) に記載しています。
+
+Meta Muse APIでは `muse-spark-1.3` などの標準のモデルIDを指定します。末尾が `-contributor` のモデルは、送った内容がMetaのモデルの学習に使われることがあるため設定できません。標準のモデルについて、Metaは送った内容を学習に使わないとしています（[料金と制限](https://dev.meta.ai/docs/pricing-rate-limits)）。保持期間は公開文書で確認できていません。利用できる国は限られます。
 
 ## 設定の保存と比較
 

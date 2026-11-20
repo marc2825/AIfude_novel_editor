@@ -1172,3 +1172,22 @@ Task 20.6で開発サーバーのInsightバッジにより失敗した標準E2E 
 
 実機（iOS/Android・Windows/macOS）での確認、パスワード管理ソフトとの連携、600,000回のPBKDF2の低速端末での所要時間は未確認。commitは行わない。
 
+## Phase 23：Meta Muse APIの接続
+
+2026-11-21の依頼「museやgrok,grok botへの対応を追加」を、所有者の回答に従いアプリのAI接続先への追加として扱う。Grokは既存の `xai` で対応済みのため、Meta Muse APIだけを追加する。決定は [D-055](DECISIONS.md#d-055meta-muse-apiを接続先に追加する)。
+
+### Task 23.1：接続ID `meta`
+
+- 接続ID・モデル定義・設定画面・環境変数（`META_API_KEY`、`META_MODEL`）・診断（`GET https://api.meta.ai/v1/models`）を追加した。
+- 生成は既存のOpenAI互換の経路で `https://api.meta.ai/v1/chat/completions` へ送り、`max_completion_tokens` とJSON Schemaを指定する。
+- 末尾が `-contributor` のモデルIDを、環境変数・保存設定・画面の保存で拒否する。Meta追加前に保存した `ai-settings.json` は `meta` を空として読み込む。
+- 比較候補として保存できる数の上限を、接続先の数（10）に合わせた。
+
+| 検査 | 結果 |
+|---|---|
+| 型・lint | 成功 |
+| Vitest | 89ファイル / 1,125テスト成功（`-contributor` の拒否、Metaの送信先と本文、診断、旧設定の読み込み、画面の保存拒否を追加） |
+| E2E（独立コピー） | `pnpm exec playwright test` 76件、比較の設定 6件が成功 |
+
+実際のMeta APIキーでの生成・診断は未確認（キーなし）。commitは行わない。
+

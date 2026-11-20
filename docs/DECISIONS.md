@@ -627,3 +627,14 @@ Status: Accepted（2026-11-20、所有者が保護の強さ・ロックの単位
 
 作品ごとにシークレットをONにでき、パスワードはアプリ全体で1つとする。画面のロックだけでなく、作品・保存履歴・ごみ箱の記録をAES-GCMで暗号化して保存する。鍵はWebCryptoで作り、パスワードから作った鍵でデータ鍵を包む。再読み込み時と10分間の無操作でロックし、ロック中はタイトルも隠す。パスワードを忘れると復元できず、復旧手段は提供しない。実装では中身だけを暗号化する「シェル」を保存し、ID・保存version・章の数・日時・保存履歴の名前は平文に残す。全作品バックアップは暗号化したまま書き出し、単体の書き出しは確認してから行い、端末同期は使えない（2026-11-20、所有者が了承）。
 
+## D-055：Meta Muse APIを接続先に追加する
+
+Status: Accepted（2026-11-21、所有者がアプリのAI接続先への追加とMeta Museを選択）。
+
+Meta Model APIのOpenAI互換Chat Completions（`https://api.meta.ai/v1/chat/completions`）を、接続ID `meta` の有料APIとして追加する。ほかの各社APIと同じく、サーバーの `AI_ENABLE_PAID_API=true`、画面のAPI許可、接続先ごとの同意を必要とする。APIキー（`META_API_KEY`）はサーバーだけに置く。応答はJSON Schemaを要求し、出力上限は `max_completion_tokens` で送る。診断は `GET /v1/models` だけを使い、本文を送らない。
+
+末尾が `-contributor` のモデルIDは、送った内容が学習に使われることがあるため、環境変数・保存設定・画面の保存のすべてで拒否する。Meta追加前に保存した `ai-settings.json` は、`meta` のモデルIDを空として読み込む。比較候補として保存できる数の上限は、接続先の数に合わせて10にする。
+
+Grokは既存の `xai`（xAI API）で対応済みのため変更しない。
+
+Sources：[Chat Completions](https://dev.meta.ai/docs/protocols/chat-completions)、[モデル](https://dev.meta.ai/docs/models)、[料金と制限](https://dev.meta.ai/docs/pricing-rate-limits)、[エラー](https://dev.meta.ai/docs/error-handling)、[地域の利用方針](https://dev.meta.ai/legal/geographic-use-policy)。

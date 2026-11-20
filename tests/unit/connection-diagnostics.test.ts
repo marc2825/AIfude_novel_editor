@@ -34,6 +34,7 @@ describe("diagnostics without manuscript or inference", () => {
     ["gemini", "GEMINI", "gemini-test", "https://generativelanguage.googleapis.com/v1beta/models", { models: [{ name: "models/gemini-test" }] }],
     ["xai", "XAI", "grok-test", "https://api.x.ai/v1/models", { data: [{ id: "grok-test" }] }],
     ["deepseek", "DEEPSEEK", "deepseek-test", "https://api.deepseek.com/models", { data: [{ id: "deepseek-test" }] }],
+    ["meta", "META", "muse-spark-1.3", "https://api.meta.ai/v1/models", { object: "list", data: [{ id: "muse-spark-1.3", created: 1 }] }],
   ] as const)("checks the %s API catalog using no prompt or URL credential", async (mode, prefix, model, url, result) => {
     const config = readAiServerConfig({ ...origin, AI_PROVIDER: mode, AI_ENABLE_PAID_API: "true", [`${prefix}_MODEL`]: model, [`${prefix}_API_KEY`]: "fixture-key" });
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json(result));

@@ -3,6 +3,7 @@ import "server-only";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
 
+import { isTrainingContributorModel } from "../../domain/ai-connections";
 import {
   findAiModelDefinition,
   isAiEditCompatibleModel,
@@ -23,6 +24,7 @@ export const AI_PROVIDER_MODES = Object.freeze([
   "gemini",
   "xai",
   "deepseek",
+  "meta",
 ] as const);
 
 export type AiProviderMode = (typeof AI_PROVIDER_MODES)[number];
@@ -40,7 +42,7 @@ export type AiServerConfig = Readonly<{
     | Readonly<{ mode: "disabled" | "mock" }>
     | Readonly<{ authDirectory: string; mode: "chatgpt"; model: string }>
     | Readonly<{ authDirectory: string; executable: string; mode: "claude"; model: string; paidApiAllowed: boolean }>
-    | Readonly<{ apiKey: string; mode: "anthropic" | "gemini" | "xai" | "deepseek"; model: string }>
+    | Readonly<{ apiKey: string; mode: "anthropic" | "gemini" | "xai" | "deepseek" | "meta"; model: string }>
     | Readonly<{
         apiKey: string | null;
         baseUrl: string;
@@ -207,11 +209,11 @@ export function readAiServerConfig(
     const paidApiAllowed = environment.AI_ENABLE_PAID_API === "true";
     return { success: true, config: Object.freeze({ appOrigin, provider: Object.freeze({ mode: providerMode, executable, authDirectory, model, paidApiAllowed }) }) };
   }
-  if (providerMode === "anthropic" || providerMode === "gemini" || providerMode === "xai" || providerMode === "deepseek") {
-    const prefix = { anthropic: "ANTHROPIC", gemini: "GEMINI", xai: "XAI", deepseek: "DEEPSEEK" }[providerMode];
+  if (providerMode === "anthropic" || providerMode === "gemini" || providerMode === "xai" || providerMode === "deepseek" || providerMode === "meta") {
+    const prefix = { anthropic: "ANTHROPIC", gemini: "GEMINI", xai: "XAI", deepseek: "DEEPSEEK", meta: "META" }[providerMode];
     const apiKey = environment[`${prefix}_API_KEY`];
     const model = environment[`${prefix}_MODEL`];
-    if (!isValidOpenAiApiKey(apiKey) || !model || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(model)) {
+    if (!isValidOpenAiApiKey(apiKey) || !model || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(model) || (providerMode === "meta" && isTrainingContributorModel(model))) {
       return { reason: "invalid-api-config", success: false };
     }
     return { success: true, config: Object.freeze({ appOrigin, provider: Object.freeze({ mode: providerMode, apiKey, model }) }) };
@@ -290,7 +292,7 @@ export function readAiServerConfig(
 export function readComparisonConfigs(environment: ServerEnvironment = process.env): readonly AiServerConfigResult[] {
   if (!environment.AI_COMPARE_PROVIDERS) return [];
   const modes = environment.AI_COMPARE_PROVIDERS.split(",").map((mode) => mode.trim());
-  if (modes.length < 2 || modes.length > 9 || new Set(modes).size !== modes.length || modes.some((mode) => mode === "disabled")) return [];
+  if (modes.length < 2 || modes.length > AI_PROVIDER_MODES.length - 1 || new Set(modes).size !== modes.length || modes.some((mode) => mode === "disabled")) return [];
   const enabledModes = modes.filter((mode) => !isPaidApiProvider(mode) || environment.AI_ENABLE_PAID_API === "true");
   const results = enabledModes.map((mode) => readAiServerConfig({ ...environment, AI_PROVIDER: mode }));
   return results.every((result) => result.success) ? results : [];

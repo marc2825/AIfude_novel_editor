@@ -49,13 +49,13 @@ AIは置換または挿入する文字列の候補だけを返す。PM document�
 
 提供元ごとに成功候補か公開用エラーコードを返す。一部が失敗しても成功した候補は残す。別接続への切替・自動再送・途中結果の表示はしない。各接続の期限を適用し、クライアントは185秒、HTTP応答全体は実測128KiBで打ち切る。
 
-`chatgpt` と `claude` はサブスクリプション接続、`openai`・`anthropic`・`gemini`・`xai`・`deepseek` はAPI接続として区別する。有料APIはサーバーの `AI_ENABLE_PAID_API=true` と画面の `allowPaidApi` を必要とする。
+`chatgpt` と `claude` はサブスクリプション接続、`openai`・`anthropic`・`gemini`・`xai`・`deepseek`・`meta` はAPI接続として区別する。有料APIはサーバーの `AI_ENABLE_PAID_API=true` と画面の `allowPaidApi` を必要とする。
 
 Claude CLIは `auth status` で認証を確認し、本文をstdinで渡す。ログイン方法は固定しない。`claude.ai` / `oauth_token` 以外では `AI_ENABLE_PAID_API=true` を要求し、未設定・未ログインは送信前に `auth-required` で止める。
 
 CLIは空の作業ディレクトリで、safe / restricted mode、ツール・MCPなし、1ターン、履歴なし、retry 0、fallbackなしで実行する。stdout / stderrの合計256KiB、180秒で制限し、中止後の応答は捨てる。JSON内の本文を共通の候補検証へ渡し、使用モデルの不一致を拒否する。structured-output repair loopは使わない。
 
-各社APIは固定の公式URLへ1回送信し、リダイレクト・再試行・tool callを許可しない。Claude Messages、Gemini、GrokはJSON Schema、DeepSeekはJSON objectを要求する。出力モードを信用せず、共通の検証処理を通す。契約とデータ保持は [配布前の確認](PROVIDER_DISTRIBUTION_REVIEW.md) を参照する。
+各社APIは固定の公式URLへ1回送信し、リダイレクト・再試行・tool callを許可しない。Claude Messages、Gemini、Grok、Meta MuseはJSON Schema、DeepSeekはJSON objectを要求する。Meta Museは出力上限を `max_completion_tokens` で送り、末尾が `-contributor` のモデルIDを環境変数・保存設定・画面の保存のすべてで拒否する。出力モードを信用せず、共通の検証処理を通す。契約とデータ保持は [配布前の確認](PROVIDER_DISTRIBUTION_REVIEW.md) を参照する。
 
 クライアントでも提供元・request ID・候補ID・件数・全候補を検証する。選択した提供元の候補に対し、通常と同じ同期検証とUndo境界で採用する。再試行や条件・同意の変更では旧結果を捨てる。比較操作の設定・同意・候補はセッション内にだけ保持する。
 

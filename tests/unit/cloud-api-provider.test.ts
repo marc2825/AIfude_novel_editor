@@ -6,7 +6,7 @@ import type { EditingProviderInput } from "../../src/server/ai/provider";
 import { createCandidateWireResponse } from "../fixtures/candidates";
 import { createDeferred } from "../helpers/deferred";
 
-const modes = ["anthropic", "gemini", "xai", "deepseek"] as const;
+const modes = ["anthropic", "gemini", "xai", "deepseek", "meta"] as const;
 function input(mode: typeof modes[number], signal = new AbortController().signal): EditingProviderInput {
   const model = CONFIGURED_CLOUD_MODELS.find((model) => model.providerId === mode);
   if (!model) throw new Error("Missing model");
@@ -24,10 +24,12 @@ describe("explicit cloud API adapters", () => {
     expect(result).toEqual({ status: "completed", output: createCandidateWireResponse(), modelId: "configured-model", usage: null });
     expect(fetch).toHaveBeenCalledOnce();
     const [url, options] = fetch.mock.calls[0] ?? [];
-    expect(String(url)).toMatch(/^https:\/\/(api\.anthropic\.com|generativelanguage\.googleapis\.com|api\.x\.ai|api\.deepseek\.com)\//u);
+    expect(String(url)).toMatch(/^https:\/\/(api\.anthropic\.com|generativelanguage\.googleapis\.com|api\.x\.ai|api\.deepseek\.com|api\.meta\.ai)\//u);
     expect(options).toMatchObject({ method: "POST", redirect: "error", cache: "no-store", signal: input(mode).signal });
     const body: unknown = JSON.parse(String(options?.body));
-    expect(body).toMatchObject({ model: "configured-model", max_tokens: 8192 });
+    // Meta documents max_completion_tokens; max_tokens is only a deprecated alias there.
+    expect(body).toMatchObject(mode === "meta" ? { model: "configured-model", max_completion_tokens: 8192 } : { model: "configured-model", max_tokens: 8192 });
+    if (mode === "meta") { expect(String(url)).toBe("https://api.meta.ai/v1/chat/completions"); expect(body).not.toHaveProperty("max_tokens"); expect(options?.headers).toMatchObject({ Authorization: "Bearer test-secret" }); }
     expect(options?.body).not.toContain("test-secret");
     if (mode === "anthropic") expect(body).toMatchObject({ output_config: { format: { type: "json_schema", schema: LLM_CANDIDATES_SCHEMA } } });
     else expect(body).toMatchObject({ stream: false, response_format: { type: mode === "deepseek" ? "json_object" : "json_schema" } });

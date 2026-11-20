@@ -37,6 +37,18 @@ describe("server-only AI connection settings", () => {
     const state = publicConnectionState(environment, null); expect(state.paidApiAllowed).toBe(false); expect(JSON.stringify(state)).not.toContain("fixture-key");
     expect(publicRuntimeForConnections(state).providerId).toBe("mock");
   });
+  it("reads settings saved before Meta Muse existed and refuses Meta contributor models", async () => {
+    const filename = join(directory, "settings.json");
+    const legacyModels: Record<string, string> = { ...settingsFromEnvironment(environment).models }; delete legacyModels.meta;
+    await writeFile(filename, JSON.stringify({ version: 1, revision: crypto.randomUUID(), settings: { ...settingsFromEnvironment(environment), models: legacyModels } }), { mode: 0o600 });
+    expect((await createAiSettingsStore(filename).read())?.settings.models.meta).toBe("");
+    const metaEnvironment = { ...environment, AI_ENABLE_PAID_API: "true", META_API_KEY: "LLM_fixture-key", META_MODEL: "muse-spark-1.3" };
+    const settings = settingsFromEnvironment(metaEnvironment); expect(settings.models.meta).toBe("muse-spark-1.3");
+    expect(() => validateActiveConnections(metaEnvironment, { ...settings, primary: "meta" })).not.toThrow();
+    expect(publicConnectionState(metaEnvironment, null).apiKeysConfigured.meta).toBe(true);
+    expect(settingsFromEnvironment({ ...metaEnvironment, META_MODEL: "muse-spark-1.3-contributor" }).models.meta).toBe("");
+    expect(() => validateActiveConnections(metaEnvironment, { ...settings, primary: "meta", models: { ...settings.models, meta: "muse-spark-1.3-contributor" } })).toThrow();
+  });
   it("preserves the valid primary connection when auxiliary environment configuration is invalid", () => {
     const state = publicConnectionState({ ...environment, AI_COMPARE_PROVIDERS: "invalid" }, null);
     expect(publicRuntimeForConnections(state)).toMatchObject({ available: true, providerId: "mock", comparisonProviders: [] });

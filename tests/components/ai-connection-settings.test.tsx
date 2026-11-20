@@ -40,6 +40,15 @@ describe("AI connection settings screen", () => {
     expect(callbacks.onDirtyChange).toHaveBeenLastCalledWith(false); expect(String(fetch.mock.calls[1]?.[1]?.body)).not.toContain("apiKey");
     expect(callbacks.onPaidApiEnabledChange).toHaveBeenLastCalledWith(false);
   });
+  it("refuses to save a Meta Muse contributor model without sending anything", async () => {
+    const current = createPublicConnectionStateFixture(); const callbacks = props();
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json(current));
+    render(<AiConnectionSettingsPanel {...callbacks} />); fireEvent.click(screen.getByRole("button", { name: "AI接続の設定・診断" }));
+    const model = await screen.findByRole("textbox", { name: "Meta Muse APIの接続モデルID" }); fireEvent.change(model, { target: { value: "muse-spark-1.3-contributor" } });
+    fireEvent.click(screen.getByRole("button", { name: "AI接続設定を保存" }));
+    await screen.findByText(/「-contributor」付きモデルは、送った内容が学習に使われるため使えません/u);
+    expect(fetch).toHaveBeenCalledOnce(); expect(callbacks.onInvalidate).not.toHaveBeenCalled(); expect(model).toHaveValue("muse-spark-1.3-contributor");
+  });
   it("keeps edits after a save failure and allows a same-value retry", async () => {
     const current = createPublicConnectionStateFixture(); const callbacks = props(); let failure = true;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {

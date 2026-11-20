@@ -7,7 +7,7 @@ export const LOCAL_LLM_MODEL_ID = "local-default" as const;
 export const CHATGPT_PROVIDER_ID = "chatgpt" as const;
 export const CHATGPT_MODEL_ID = "chatgpt-default" as const;
 
-export const PAID_API_PROVIDER_IDS = ["openai", "anthropic", "gemini", "xai", "deepseek"] as const;
+export const PAID_API_PROVIDER_IDS = ["openai", "anthropic", "gemini", "xai", "deepseek", "meta"] as const;
 export function isPaidApiProvider(providerId: string | null): boolean {
   return PAID_API_PROVIDER_IDS.some((id) => id === providerId);
 }
@@ -26,6 +26,7 @@ export const CONFIGURED_CLOUD_MODELS = Object.freeze([
   configuredModel("gemini", "Gemini API"),
   configuredModel("xai", "Grok API"),
   configuredModel("deepseek", "DeepSeek API"),
+  configuredModel("meta", "Meta Muse API"),
 ]);
 
 // Account-specific capabilities are checked by the subscription adapter.
@@ -78,6 +79,7 @@ export const AI_PROVIDER_DEFINITIONS = Object.freeze([
   Object.freeze({ displayName: "Gemini API", externalDataTransfer: true, id: "gemini" }),
   Object.freeze({ displayName: "Grok API", externalDataTransfer: true, id: "xai" }),
   Object.freeze({ displayName: "DeepSeek API", externalDataTransfer: true, id: "deepseek" }),
+  Object.freeze({ displayName: "Meta Muse API", externalDataTransfer: true, id: "meta" }),
   Object.freeze({ displayName: "ChatGPTサブスク（実験的）", externalDataTransfer: true, id: CHATGPT_PROVIDER_ID }),
   Object.freeze({
     displayName: "ローカルLLM",

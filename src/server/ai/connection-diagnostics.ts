@@ -55,9 +55,9 @@ export async function diagnoseConnection(config: AiServerConfigResult, requestSi
       url = `${provider.baseUrl}/models`; model = provider.model; headers = provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {};
     } else if (provider.mode === "openai") {
       url = "https://api.openai.com/v1/models"; model = provider.defaultModelId; headers = { Authorization: `Bearer ${provider.apiKey}` };
-    } else if (provider.mode === "anthropic" || provider.mode === "gemini" || provider.mode === "xai" || provider.mode === "deepseek") {
+    } else if (provider.mode === "anthropic" || provider.mode === "gemini" || provider.mode === "xai" || provider.mode === "deepseek" || provider.mode === "meta") {
       model = provider.model;
-      const urls = { anthropic: "https://api.anthropic.com/v1/models", gemini: "https://generativelanguage.googleapis.com/v1beta/models", xai: "https://api.x.ai/v1/models", deepseek: "https://api.deepseek.com/models" };
+      const urls = { anthropic: "https://api.anthropic.com/v1/models", gemini: "https://generativelanguage.googleapis.com/v1beta/models", xai: "https://api.x.ai/v1/models", deepseek: "https://api.deepseek.com/models", meta: "https://api.meta.ai/v1/models" };
       url = urls[provider.mode];
       headers = provider.mode === "anthropic" ? { "x-api-key": provider.apiKey, "anthropic-version": "2023-06-01" }
         : provider.mode === "gemini" ? { "x-goog-api-key": provider.apiKey } : { Authorization: `Bearer ${provider.apiKey}` };

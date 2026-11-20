@@ -9,7 +9,7 @@ import { CONNECTION_MODES, MODEL_FIELDS, connectionSettingsSchema, publicConnect
 import { readAiServerConfig, parseLocalLlmBaseUrl } from "./config";
 
 export type AiEnvironment = Readonly<Record<string, string | undefined>>;
-export const MODEL_ENVIRONMENT_KEYS = { chatgpt: "CHATGPT_MODEL", claude: "CLAUDE_MODEL", local: "LOCAL_LLM_MODEL", openai: "OPENAI_MODEL", anthropic: "ANTHROPIC_MODEL", gemini: "GEMINI_MODEL", xai: "XAI_MODEL", deepseek: "DEEPSEEK_MODEL" } as const;
+export const MODEL_ENVIRONMENT_KEYS = { chatgpt: "CHATGPT_MODEL", claude: "CLAUDE_MODEL", local: "LOCAL_LLM_MODEL", openai: "OPENAI_MODEL", anthropic: "ANTHROPIC_MODEL", gemini: "GEMINI_MODEL", xai: "XAI_MODEL", deepseek: "DEEPSEEK_MODEL", meta: "META_MODEL" } as const;
 const recordSchema = z.object({ version: z.literal(1), revision: z.uuid(), settings: connectionSettingsSchema }).strict();
 export type ConnectionRecord = z.infer<typeof recordSchema>;
 export class AiSettingsConflictError extends Error {}
@@ -51,7 +51,7 @@ export function publicConnectionState(environment: AiEnvironment, record: Connec
   return publicConnectionStateSchema.parse({ revision: record?.revision ?? null, settings,
     availableModes: CONNECTION_MODES.filter((mode) => mode !== "disabled" && readAiServerConfig({ ...effective, AI_PROVIDER: mode }).success),
     paidApiAllowed: environment.AI_ENABLE_PAID_API === "true",
-    apiKeysConfigured: Object.fromEntries(["openai", "anthropic", "gemini", "xai", "deepseek"].map((mode) => [mode, Boolean(environment[`${mode === "anthropic" ? "ANTHROPIC" : mode.toUpperCase()}_API_KEY`])])),
+    apiKeysConfigured: Object.fromEntries(["openai", "anthropic", "gemini", "xai", "deepseek", "meta"].map((mode) => [mode, Boolean(environment[`${mode === "anthropic" ? "ANTHROPIC" : mode.toUpperCase()}_API_KEY`])])),
   });
 }
 export function createAiSettingsStore(filename: string) {

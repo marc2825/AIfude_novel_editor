@@ -10,7 +10,7 @@ import {
 
 describe("AI server configuration", () => {
   it.each([undefined, "false", "1"])("keeps API connections OFF without an explicit true server setting: %s", (setting) => {
-    for (const mode of ["openai", "anthropic", "gemini", "xai", "deepseek"]) {
+    for (const mode of ["openai", "anthropic", "gemini", "xai", "deepseek", "meta"]) {
       expect(readAiServerConfig({ APP_ORIGIN: "http://127.0.0.1:3000", AI_PROVIDER: mode, AI_ENABLE_PAID_API: setting })).toEqual({ success: false, reason: "paid-api-disabled" });
     }
   });
@@ -20,11 +20,16 @@ describe("AI server configuration", () => {
     expect(readAiServerConfig({ ...env, AI_ENABLE_PAID_API: "true" })).toMatchObject({ success: true, config: { provider: { mode: "claude", paidApiAllowed: true } } });
     for (const addition of [{ CLAUDE_MODEL: "sonnet" }, { CLAUDE_AUTH_DIR: process.cwd() }, { CLAUDE_CLI_PATH: "./claude" }]) expect(readAiServerConfig({ ...env, ...addition })).toEqual({ success: false, reason: "invalid-claude-config" });
   });
-  it.each(["anthropic", "gemini", "xai", "deepseek"])("validates %s API credentials only with explicit opt-in", (mode) => {
+  it.each(["anthropic", "gemini", "xai", "deepseek", "meta"])("validates %s API credentials only with explicit opt-in", (mode) => {
     const prefix = mode === "anthropic" ? "ANTHROPIC" : mode.toUpperCase();
     const env = { APP_ORIGIN: "http://127.0.0.1:3000", AI_PROVIDER: mode, AI_ENABLE_PAID_API: "true", [`${prefix}_API_KEY`]: "server-secret", [`${prefix}_MODEL`]: "configured-model" };
     expect(readAiServerConfig(env)).toMatchObject({ success: true, config: { provider: { mode, model: "configured-model" } } });
     expect(readAiServerConfig({ ...env, [`${prefix}_API_KEY`]: "" })).toEqual({ success: false, reason: "invalid-api-config" });
+  });
+  it("rejects Meta Muse contributor models, which may train on what is sent", () => {
+    const env = { APP_ORIGIN: "http://127.0.0.1:3000", AI_PROVIDER: "meta", AI_ENABLE_PAID_API: "true", META_API_KEY: "LLM_server-secret", META_MODEL: "muse-spark-1.3" };
+    expect(readAiServerConfig(env)).toMatchObject({ success: true, config: { provider: { mode: "meta", model: "muse-spark-1.3" } } });
+    for (const model of ["muse-spark-1.3-contributor", "muse-spark-1.3-Contributor"]) expect(readAiServerConfig({ ...env, META_MODEL: model })).toEqual({ success: false, reason: "invalid-api-config" });
   });
   it("retains subscriptions when API targets are OFF and fails closed for invalid active comparison settings", () => {
     const env = { APP_ORIGIN: "http://127.0.0.1:3000", AI_COMPARE_PROVIDERS: "chatgpt,claude,gemini", CHATGPT_MODEL: "gpt-6.1-sol", CLAUDE_MODEL: "claude-sonnet-5" };
