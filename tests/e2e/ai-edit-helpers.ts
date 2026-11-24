@@ -4,6 +4,43 @@ export function manuscriptEditor(page: Page): Locator {
   return page.getByRole("textbox", { name: "小説本文" });
 }
 
+/** Picks a tool inside the open AI panel. The radios are visually replaced by chips, so the click is forced. */
+export async function chooseAiTool(page: Page, label: string): Promise<void> {
+  const radio = page.getByRole("dialog").getByRole("radio", { name: label, exact: true });
+  await radio.click({ force: true });
+  await expect(radio).toBeChecked();
+}
+
+/** Tries a tool that may not fit the target; the panel then keeps its current tool. */
+export async function tryAiTool(page: Page, label: string): Promise<void> {
+  await page.getByRole("dialog").getByRole("radio", { name: label, exact: true }).click({ force: true });
+}
+
+/** Opens the AI panel for the current caret or selection and switches to the given tool. */
+export async function openAiTool(page: Page, label: string): Promise<void> {
+  await page.keyboard.press("Control+k");
+  await chooseAiTool(page, label);
+}
+
+/** The work switcher in the top bar keeps the saved works and the file actions in a menu. */
+export async function openWorkMenu(page: Page): Promise<void> {
+  const trigger = page.getByRole("button", { name: /作品の切替と操作/u });
+  if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
+}
+
+export async function workMenuButton(page: Page, name: string): Promise<Locator> {
+  await openWorkMenu(page);
+  return page.getByRole("button", { name, exact: true });
+}
+
+/**
+ * The saved works listed in the work menu. The menu stays in the DOM while it is closed, so
+ * counts and titles can be checked without opening it; open it with openWorkMenu before clicking.
+ */
+export function savedWorkButtons(page: Page): Locator {
+  return page.getByRole("list", { name: "作品を切り替える", includeHidden: true }).getByRole("button", { includeHidden: true });
+}
+
 export async function placeCaret(page: Page, offset: number): Promise<void> {
   const editor = manuscriptEditor(page);
   await editor.focus();

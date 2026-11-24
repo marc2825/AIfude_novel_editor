@@ -1,21 +1,22 @@
 "use client";
 
 import type { Editor } from "@tiptap/core";
-import type { CompletionOperation } from "../../domain/completion";
 import { EditorContent } from "@tiptap/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { TextSelection, type EditorState } from "@tiptap/pm/state";
 import { undo, redo } from "@tiptap/pm/history";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import styles from "./Editor.module.css";
 
 type Menu = Readonly<{ x: number; y: number; state: EditorState }>;
 
-export function EditorSurface({ editor, onAiCommand, dictionaryMode = false, completionMode }: Readonly<{
-  editor: Editor | null; onAiCommand?: (editor: Editor) => boolean; dictionaryMode?: boolean; completionMode?: CompletionOperation;
+export function EditorSurface({ editor, onAiCommand, onDictionaryCommand, toolbarStart, toolbarEnd }: Readonly<{
+  editor: Editor | null; onAiCommand?: (editor: Editor) => boolean;
+  /** Looks up the selected words. Offered in the context menu next to the AI suggestion. */
+  onDictionaryCommand?: (editor: Editor) => boolean;
+  /** Shown at the start and the end of the slim toolbar above the manuscript. */
+  toolbarStart?: ReactNode; toolbarEnd?: ReactNode;
 }>) {
-  const actionLabel = completionMode === "context-insert" ? "文脈で挿入" : completionMode === "infill" ? "中間補完" : completionMode === "continue" ? "続きを書く" : dictionaryMode ? "辞書で調べる" : "AI提案";
-  const hint = completionMode === "context-insert" ? "挿入位置にカーソル・右クリック → " : completionMode === "infill" ? "空白を選択／空段落にカーソル → " : completionMode === "continue" ? "章の末尾にカーソル → " : "選択して右クリック → ";
   const [menu, setMenu] = useState<Menu | null>(null);
   // ProseMirror can end its composition bookkeeping in its native contextmenu handler.
   // Keep the actual composition event boundary before React receives the bubbling menu event.
@@ -25,6 +26,14 @@ export function EditorSurface({ editor, onAiCommand, dictionaryMode = false, com
   const [composing, setComposing] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const itemRef = useRef<HTMLButtonElement>(null);
+  function menuItems(): HTMLButtonElement[] {
+    return Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
+  }
+  function runFromMenu(command: ((editor: Editor) => boolean) | undefined) {
+    if (menu && editor && !editor.isDestroyed && editor.isEditable && !editor.view.composing && !composingRef.current && editor.state.doc === menu.state.doc && editor.state.selection.eq(menu.state.selection)) {
+      setMenu(null); command?.(editor);
+    } else close(true);
+  }
   useEffect(() => {
     if (!editor) return;
     const update = () => {
@@ -53,8 +62,9 @@ export function EditorSurface({ editor, onAiCommand, dictionaryMode = false, com
     if (!editor || editor.isDestroyed || !editor.isEditable || editor.view.composing || composingRef.current || !(editor.state.selection instanceof TextSelection) || !onAiCommand) return false;
     const selection = editor.state.selection;
     const blank = editor.state.doc.textBetween(selection.from, selection.to, "\n").trim().length === 0;
-    if (completionMode === "infill" ? !blank : completionMode === "continue" || completionMode === "context-insert" ? !selection.empty : selection.empty || blank) return false;
-    setMenu({ x: Math.max(8, Math.min(x, window.innerWidth - 248)), y: Math.max(8, Math.min(y, window.innerHeight - 104)), state: editor.state });
+    // Without selected text the browser's own menu (paste and so on) stays available.
+    if (selection.empty || blank) return false;
+    setMenu({ x: Math.max(8, Math.min(x, window.innerWidth - 248)), y: Math.max(8, Math.min(y, window.innerHeight - 152)), state: editor.state });
     return true;
   }
   useLayoutEffect(() => { if (menu) itemRef.current?.focus({ preventScroll: true }); }, [menu]);
@@ -81,17 +91,19 @@ export function EditorSurface({ editor, onAiCommand, dictionaryMode = false, com
 
   return <section className={styles.editorSection} aria-labelledby="editor-title">
     <div className={styles.editorHeader}>
-      <h2 id="editor-title">本文</h2>
-      <p>{hint}{actionLabel} <kbd>⌘ / Ctrl K</kbd></p>
+      <h2 id="editor-title" className={styles.visuallyHidden}>本文</h2>
+      <div className={styles.toolbarStart}>{toolbarStart}</div>
       <div className={styles.touchActions} role="group" aria-label="本文の操作">
+        {toolbarEnd}
         <button type="button" aria-label="元に戻す" title="元に戻す" disabled={!editor?.isEditable || composing || !history.undo}
-          onPointerDown={preserveSelection} onClick={() => changeHistory(undo)}>↶</button>
+          onPointerDown={preserveSelection} onClick={() => changeHistory(undo)}><HistoryIcon direction="undo" /></button>
         <button type="button" aria-label="やり直す" title="やり直す" disabled={!editor?.isEditable || composing || !history.redo}
-          onPointerDown={preserveSelection} onClick={() => changeHistory(redo)}>↷</button>
+          onPointerDown={preserveSelection} onClick={() => changeHistory(redo)}><HistoryIcon direction="redo" /></button>
         <button type="button" className={styles.aiTrigger} disabled={!editor?.isEditable || !onAiCommand || composing}
+          title="文章を選ぶか、書きたい位置にカーソルを置いて押します"
           onPointerDown={preserveSelection} onClick={() => {
             if (editor && canAct()) { setMenu(null); onAiCommand?.(editor); }
-          }}>{actionLabel}</button>
+          }}>AI提案<kbd aria-hidden="true">⌘ / Ctrl K</kbd></button>
       </div>
     </div>
     <div onPointerDownCapture={(event) => { touchRef.current = event.pointerType === "touch"; }}
@@ -114,15 +126,28 @@ export function EditorSurface({ editor, onAiCommand, dictionaryMode = false, com
         if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
         if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true); }
         if (event.key === "Tab") close(true);
-        if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) { event.preventDefault(); itemRef.current?.focus(); }
+        if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+          event.preventDefault();
+          const items = menuItems();
+          const index = items.findIndex((item) => item === document.activeElement);
+          const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+            : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+          items[next]?.focus();
+        }
       }}>
       <button type="button" role="menuitem" ref={itemRef} onPointerDown={(event) => event.preventDefault()}
-        onClick={() => {
-          if (editor && !editor.isDestroyed && editor.isEditable && !editor.view.composing && !composingRef.current && editor.state.doc === menu.state.doc && editor.state.selection.eq(menu.state.selection)) {
-            setMenu(null); onAiCommand?.(editor);
-          } else close(true);
-        }}><span>✦ {actionLabel}</span><kbd>⌘ / Ctrl K</kbd></button>
-      <p>{completionMode ? "指定位置に入れる候補を比較" : dictionaryMode ? "選択した語句の意味を確認" : "選択した文章の言い換えを比較"}</p>
+        onClick={() => runFromMenu(onAiCommand)}><span>AI提案</span><kbd>⌘ / Ctrl K</kbd></button>
+      {onDictionaryCommand ? <button type="button" role="menuitem" onPointerDown={(event) => event.preventDefault()}
+        onClick={() => runFromMenu(onDictionaryCommand)}><span>辞書で調べる</span></button> : null}
+      <p>選んだ文章の言い換えを比べるか、語句の意味を調べます。</p>
     </div> : null}
   </section>;
+}
+
+function HistoryIcon({ direction }: Readonly<{ direction: "undo" | "redo" }>) {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"
+    style={direction === "redo" ? { transform: "scaleX(-1)" } : undefined}>
+    <path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 0 12h-3" />
+  </svg>;
 }

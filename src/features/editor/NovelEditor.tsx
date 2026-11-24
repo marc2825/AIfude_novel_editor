@@ -1,19 +1,19 @@
 "use client";
 
 import type { PersistedDocument } from "../../domain/workspace";
-import type { CompletionOperation } from "../../domain/completion";
 
 import type { Editor } from "@tiptap/core";
 import { useEditor } from "@tiptap/react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import type { EditorSessions } from "./editor-sessions";
 import { createEditorOptions } from "./create-editor";
 import { EditorSurface } from "./EditorSurface";
 
 type NovelEditorProps = Readonly<{
-  dictionaryMode?: boolean;
-  completionMode?: CompletionOperation;
+  onDictionaryCommand?: (editor: Editor) => boolean;
+  toolbarStart?: ReactNode;
+  toolbarEnd?: ReactNode;
   sessions?: EditorSessions;
   sessionKey?: string;
   positionKey?: string;
@@ -28,8 +28,9 @@ type NovelEditorProps = Readonly<{
 }>;
 
 function TransientNovelEditor({
-  dictionaryMode = false,
-  completionMode,
+  onDictionaryCommand,
+  toolbarStart,
+  toolbarEnd,
   editable = true,
   initialContentRevision = 0,
   initialText,
@@ -109,7 +110,7 @@ function TransientNovelEditor({
     return () => callbacks.current.onEditorDestroy?.(editor);
   }, [editor]);
 
-  return <EditorSurface editor={editor} onAiCommand={onAiCommand} dictionaryMode={dictionaryMode} completionMode={completionMode} />;
+  return <EditorSurface editor={editor} onAiCommand={onAiCommand} onDictionaryCommand={onDictionaryCommand} toolbarStart={toolbarStart} toolbarEnd={toolbarEnd} />;
 }
 
 function RetainedNovelEditor(props: NovelEditorProps & { sessions: EditorSessions; sessionKey: string; positionKey: string }) {
@@ -125,7 +126,7 @@ function RetainedNovelEditor(props: NovelEditorProps & { sessions: EditorSession
     return () => { sessions.deactivate(sessionKey); callbacks.current.onEditorDestroy?.(current); };
   }, [sessions, sessionKey, positionKey]);
   useEffect(() => { if (editor && editor.isEditable !== (props.editable ?? true)) editor.setEditable(props.editable ?? true); }, [editor, props.editable]);
-  return <EditorSurface editor={editor} onAiCommand={props.onAiCommand} dictionaryMode={props.dictionaryMode} completionMode={props.completionMode} />;
+  return <EditorSurface editor={editor} onAiCommand={props.onAiCommand} onDictionaryCommand={props.onDictionaryCommand} toolbarStart={props.toolbarStart} toolbarEnd={props.toolbarEnd} />;
 }
 
 export function NovelEditor(props: NovelEditorProps) {

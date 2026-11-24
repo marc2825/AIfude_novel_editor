@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { expect, test } from "@playwright/test";
 import { publicConnectionStateSchema } from "../../src/domain/ai-connections";
-import { manuscriptEditor, openWorkspacePanel } from "./ai-edit-helpers";
+import { manuscriptEditor, openWorkspacePanel, workMenuButton } from "./ai-edit-helpers";
 
 const metadataRequests: { method: string | undefined; url: string | undefined; body: string }[] = [];
 const server = createServer((request, response) => {
@@ -36,7 +36,7 @@ test("protects unsaved work settings on reload and switching, then saves them th
   const leaving = page.waitForEvent("dialog"); const reload = page.evaluate(() => window.location.reload());
   const warning = await leaving; expect(warning.type()).toBe("beforeunload"); await warning.dismiss(); await reload;
   await expect(title).toHaveValue("保存する題名"); await expect(editor).toHaveText("保護する本文");
-  page.once("dialog", (dialog) => dialog.dismiss()); await page.getByRole("button", { name: "新規作品", exact: true }).click();
+  page.once("dialog", (dialog) => dialog.dismiss()); await (await workMenuButton(page, "新規作品")).click();
   await expect(page.getByText("作品の切替を取り消しました。", { exact: true })).toBeVisible(); await expect(title).toHaveValue("保存する題名");
   await title.focus(); await page.keyboard.press("Control+s"); await expect(page.getByText("本文と作品メモリを保存しました。", { exact: true })).toBeVisible();
   await page.reload(); await expect(editor).toHaveText("保護する本文"); await page.getByRole("button", { name: "設定とバックアップ", exact: true }).click();

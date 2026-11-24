@@ -186,6 +186,17 @@ beforeEach(() => {
   workspaceEditorObservation.current = null;
 });
 
+function openWorkMenu() {
+  const trigger = screen.getByRole("button", { name: /作品の切替と操作/u });
+  if (trigger.getAttribute("aria-expanded") !== "true") fireEvent.click(trigger);
+}
+
+/** The work switcher keeps its items in a menu; open it before choosing one. */
+function clickWorkMenuItem(name: string) {
+  openWorkMenu();
+  fireEvent.click(screen.getByRole("button", { name }));
+}
+
 describe("workspace persistence session", () => {
   it("protects all work-setting drafts on unload and saves them through Ctrl+S without replacing the editor", async () => {
     await seedWorkspace(createWorkspaceFixture({ body: bodyWithText("本文") }));
@@ -205,7 +216,7 @@ describe("workspace persistence session", () => {
     render(<WorkspaceApp aiRuntime={MOCK_RUNTIME} />); const editor = await waitForEditableEditor(); await openAndGenerateCandidate(editor);
     openWorkspaceSettings(); fireEvent.change(screen.getByLabelText(/作品名/u), { target: { value: "未保存の題名" } });
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-    fireEvent.click(screen.getByRole("button", { name: "新規作品" })); await screen.findByText("作品の切替を取り消しました。");
+    clickWorkMenuItem("新規作品"); await screen.findByText("作品の切替を取り消しました。");
     expect(screen.getByLabelText(/作品名/u)).toHaveValue("未保存の題名"); expect(screen.getByRole("button", { name: "採用" })).toBeEnabled();
     // The first confirmation concerns moving to trash; the second protects the draft.
     confirm.mockReturnValueOnce(true).mockReturnValueOnce(false);
@@ -249,7 +260,7 @@ describe("workspace persistence session", () => {
     fireEvent.click(screen.getByRole("button", { name: "AI接続の設定・診断" }));
     expect(screen.getByRole("textbox", { name: "ローカルLLMの接続モデルID" })).toBe(model);
     expect(model).toHaveValue("unsaved-local-model");
-    fireEvent.click(screen.getByRole("button", { name: "新規作品" }));
+    clickWorkMenuItem("新規作品");
     await waitForEditableEditor();
     expect(screen.getByRole("textbox", { name: "ローカルLLMの接続モデルID" })).toBe(model);
     expect(model).toHaveValue("unsaved-local-model");
@@ -304,10 +315,10 @@ describe("workspace persistence session", () => {
     const save = vi.spyOn(WorkspaceRepository.prototype, "save").mockRejectedValue(new DOMException("quota", "QuotaExceededError"));
     render(<WorkspaceApp />); await screen.findByText("保存失敗");
     const editor = await screen.findByRole("textbox", { name: "小説本文" });
-    fireEvent.click(screen.getByRole("button", { name: "新規作品" }));
+    clickWorkMenuItem("新規作品");
     await screen.findByText("保存または読み込みに失敗したため、作品を切り替えませんでした。現在の本文はこの画面に保持されています。");
     expect(save).toHaveBeenCalledTimes(2); expect(screen.getByRole("textbox", { name: "小説本文" })).toBe(editor);
-    expect(screen.getAllByRole("tab")).toHaveLength(1); expect(await loadWorkspace()).toBeNull();
+    openWorkMenu(); expect(within(screen.getByRole("list", { name: "作品を切り替える" })).getAllByRole("button")).toHaveLength(1); expect(await loadWorkspace()).toBeNull();
   });
   it("warns before leaving with unsaved memory and clears the warning after Cmd/Ctrl + S saves it", async () => {
     await seedWorkspace(createWorkspaceFixture({ body: bodyWithText("原稿") }));
@@ -340,38 +351,37 @@ describe("workspace persistence session", () => {
     fireEvent.click(screen.getByRole("button", { name: "生成" })); await screen.findByText("候補を生成しています。本文編集は続けられます。");
     fireEvent.click(screen.getByRole("button", { name: "作品メモリ" }));
     fireEvent.change(screen.getByRole("textbox", { name: /設定メモ/u }), { target: { value: "草稿メモ" } });
-    vi.spyOn(window, "confirm").mockReturnValue(false); fireEvent.click(screen.getByRole("button", { name: "新規作品" }));
+    vi.spyOn(window, "confirm").mockReturnValue(false); clickWorkMenuItem("新規作品");
     await screen.findByText("作品の切替を取り消しました。");
     const sent = fetch.mock.calls[0]?.[1]; if (!sent) throw new Error("Expected request"); expect(sent.signal?.aborted).toBe(false);
     pending.resolve(Response.json(createAiEditSuccessResponseFixture(parseAiRequest(sent))));
     await screen.findByText("2件の候補を受信しました。"); expect(editor).toHaveTextContent("前対象後");
     expect(screen.getByRole("textbox", { name: /設定メモ/u })).toHaveValue("草稿メモ");
   });
-  it("saves before switching works and reopens closed tabs without deleting data", async () => {
+  it("saves before switching works and switches back from the work menu without deleting data", async () => {
     const original = await seedWorkspace(createWorkspaceFixture({ body: bodyWithText("第一作品") }));
     render(<WorkspaceApp />); const firstEditor = await waitForEditableEditor(); dispatchPaste(firstEditor, { "text/plain": "追記" });
-    fireEvent.click(screen.getByRole("button", { name: "新規作品" })); await screen.findByText("新しい作品を作成しました。");
+    clickWorkMenuItem("新規作品"); await screen.findByText("新しい作品を作成しました。");
     const secondEditor = screen.getByRole("textbox", { name: "小説本文" }); expect(secondEditor).not.toBe(firstEditor); expect(secondEditor.textContent).toBe("");
     dispatchPaste(secondEditor, { "text/plain": "第二作品" });
-    fireEvent.click(screen.getByRole("tab", { name: original.project.title })); await screen.findByText("作品を開きました。");
+    clickWorkMenuItem(original.project.title); await screen.findByText("作品を開きました。");
     expect(screen.getByRole("textbox", { name: "小説本文" })).toHaveTextContent("追記第一作品");
-    fireEvent.click(screen.getByRole("button", { name: "無題の作品のタブを閉じる" })); await screen.findByText("タブを閉じました。保存済み一覧から開き直せます。");
-    expect(screen.queryByRole("tab", { name: "無題の作品" })).not.toBeInTheDocument();
     const database = await openWorkspaceDatabase(); const files = await new WorkspaceRepository(database).listFiles(); database.close();
-    expect(files).toHaveLength(2); const other = files.find((file) => file.projectId !== original.project.id); if (!other) throw new Error("Expected second work");
-    fireEvent.change(screen.getByRole("combobox", { name: "保存済み作品を開く" }), { target: { value: other.projectId } });
+    expect(files).toHaveLength(2);
+    clickWorkMenuItem("無題の作品");
     await screen.findByText("作品を開きました。"); expect(screen.getByRole("textbox", { name: "小説本文" })).toHaveTextContent("第二作品");
-    expect(screen.getByRole("tab", { name: "無題の作品" })).toHaveAttribute("aria-selected", "true");
+    openWorkMenu(); expect(screen.getByRole("button", { name: "無題の作品" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: original.project.title })).not.toHaveAttribute("aria-current");
   });
   it.each(["save", "activateFile"] as const)("retains the current editor and draft when %s fails during a switch", async (method) => {
     const original = await seedWorkspace(createWorkspaceFixture({ body: bodyWithText("残す本文") }));
     render(<WorkspaceApp />); const editor = await waitForEditableEditor();
     vi.spyOn(WorkspaceRepository.prototype, method).mockRejectedValueOnce(new DOMException("quota", "QuotaExceededError"));
-    dispatchPaste(editor, { "text/plain": "最新" }); fireEvent.click(screen.getByRole("button", { name: "新規作品" }));
+    dispatchPaste(editor, { "text/plain": "最新" }); clickWorkMenuItem("新規作品");
     await screen.findByText("保存または読み込みに失敗したため、作品を切り替えませんでした。現在の本文はこの画面に保持されています。");
     expect(screen.getByRole("textbox", { name: "小説本文" })).toBe(editor); expect(editor).toHaveTextContent("最新残す本文"); expect(editor).toHaveAttribute("contenteditable", "true");
     expect((await loadWorkspace())?.project.id).toBe(original.project.id);
-    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    openWorkMenu(); expect(within(screen.getByRole("list", { name: "作品を切り替える" })).getAllByRole("button")).toHaveLength(1);
   });
   it("discards an abort-ignoring AI response after a file switch", async () => {
     await seedWorkspace(createWorkspaceFixture({ body: bodyWithText("前対象後") }));
@@ -381,7 +391,7 @@ describe("workspace persistence session", () => {
     fireEvent.change(await screen.findByRole("textbox", { name: "編集の指示" }), { target: { value: "自然に" } });
     fireEvent.click(screen.getByRole("button", { name: "生成" })); await screen.findByText("候補を生成しています。本文編集は続けられます。");
     const sent = fetch.mock.calls[0]?.[1]; if (!sent) throw new Error("Expected request");
-    fireEvent.click(screen.getByRole("button", { name: "新規作品" })); await screen.findByText("新しい作品を作成しました。");
+    clickWorkMenuItem("新規作品"); await screen.findByText("新しい作品を作成しました。");
     expect(sent.signal?.aborted).toBe(true); pending.resolve(Response.json(createAiEditSuccessResponseFixture(parseAiRequest(sent))));
     await waitFor(() => expect(screen.queryByRole("button", { name: "採用" })).not.toBeInTheDocument());
     expect(screen.getByRole("textbox", { name: "小説本文" }).textContent).toBe("");
@@ -1376,8 +1386,8 @@ describe("workspace persistence session", () => {
     render(<WorkspaceApp />); const first = await waitForEditableEditor();
     dispatchPaste(first, { "text/plain": "原稿😀" });
     const pm = workspaceEditorObservation.current; if (!pm) throw new Error("Missing editor"); setTextSelection(pm, 3);
-    fireEvent.click(screen.getByRole("button", { name: "新規作品" })); await screen.findByText("新しい作品を作成しました。");
-    fireEvent.click(screen.getByRole("tab", { name: original.project.title })); await screen.findByText("作品を開きました。");
+    clickWorkMenuItem("新規作品"); await screen.findByText("新しい作品を作成しました。");
+    clickWorkMenuItem(original.project.title); await screen.findByText("作品を開きました。");
     expect(workspaceEditorObservation.current).toBe(pm); expect(screen.getByRole("textbox", { name: "小説本文" })).toBe(first);
     expect(pm.state.selection.anchor).toBe(3); expect(undoDepth(pm.state)).toBe(1);
     fireEvent.click(screen.getByRole("button", { name: "章とアウトライン" }));
@@ -1393,7 +1403,7 @@ describe("workspace persistence session", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "章タイトル" }), { target: { value: "旅立ち" } });
     fireEvent.change(screen.getByRole("textbox", { name: "章のアウトライン" }), { target: { value: "町を出る\n友と別れる" } });
     const before = new Event("beforeunload", { cancelable: true }); window.dispatchEvent(before); expect(before.defaultPrevented).toBe(true);
-    vi.spyOn(window, "confirm").mockReturnValue(false); fireEvent.click(screen.getByRole("button", { name: "新規作品" }));
+    vi.spyOn(window, "confirm").mockReturnValue(false); clickWorkMenuItem("新規作品");
     await screen.findByText("作品の切替を取り消しました。"); expect(screen.getByRole("textbox", { name: "章タイトル" })).toHaveValue("旅立ち");
     fireEvent.click(screen.getByRole("button", { name: "保存" })); await screen.findByText("本文と作品メモリを保存しました。");
     expect((await loadWorkspace())?.chapter).toMatchObject({ title: "旅立ち", outlineNotes: "町を出る\n友と別れる" });
@@ -1473,8 +1483,8 @@ describe("workspace persistence session", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存履歴・復元" }));
     fireEvent.click(screen.getByRole("button", { name: "現在の状態を履歴に保存" }));
     await screen.findByText("履歴・バックアップ処理中");
-    expect(editor).toHaveAttribute("contenteditable", "false"); expect(screen.getByRole("button", { name: "新規作品" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "新規作品" })); expect(screen.getAllByRole("tab")).toHaveLength(1);
+    expect(editor).toHaveAttribute("contenteditable", "false"); openWorkMenu(); expect(screen.getByRole("button", { name: "新規作品" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "新規作品" })); expect(within(screen.getByRole("list", { name: "作品を切り替える" })).getAllByRole("button")).toHaveLength(1);
     pending.resolve(); await screen.findByText("履歴を更新しました。");
     expect(editor).toHaveAttribute("contenteditable", "true"); expect(add).toHaveBeenCalledOnce();
   });

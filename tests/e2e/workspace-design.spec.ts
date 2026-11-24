@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { manuscriptEditor, selectParagraphText } from "./ai-edit-helpers";
+import { manuscriptEditor, placeCaret, selectParagraphText } from "./ai-edit-helpers";
 import { WRITING_TOOL_GROUPS, WRITING_TOOLS } from "../../src/features/ai-edit/writing-tools";
 
-test("shows readable icon tools and preserves keyboard selection without sending or editing", async ({ page }) => {
+test("keeps one quiet rail, offers the tools inside the AI panel, and never sends or edits by choosing", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   let requests = 0;
   page.on("request", (request) => { if (/\/api\/ai\/(edits|comparisons|dictionary)/u.test(request.url())) requests++; });
@@ -10,33 +10,48 @@ test("shows readable icon tools and preserves keyboard selection without sending
   const editor = manuscriptEditor(page);
   await expect(editor).toBeEditable();
   await editor.fill("本文はツールの選択だけでは変更しません。");
-  const rail = page.getByRole("navigation", { name: "執筆ツール", exact: true });
-  for (const group of WRITING_TOOL_GROUPS) {
-    const members = WRITING_TOOLS.filter((tool) => tool.group === group.id);
-    await expect(rail.getByRole("group", { name: group.label, exact: true }).getByRole("radio")).toHaveCount(members.length);
+  // Every auxiliary panel has one entry, in one rail. No tool list is shown while writing.
+  const rail = page.getByRole("navigation", { name: "執筆の補助", exact: true });
+  await expect(rail.getByRole("button")).toHaveCount(8);
+  await expect(page.getByRole("radio")).toHaveCount(0);
+  for (const button of await rail.getByRole("button").all()) {
+    const bounds = await button.boundingBox();
+    expect(bounds?.height).toBeGreaterThanOrEqual(44); expect(bounds?.width).toBeGreaterThanOrEqual(44);
+    expect(await button.locator("span").evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(14);
+    await expect(button.locator("svg")).toHaveAttribute("aria-hidden", "true");
   }
-  await expect(page.locator('select[aria-label="AIツール"] > optgroup')).toHaveCount(WRITING_TOOL_GROUPS.length);
-  for (const tool of WRITING_TOOLS) {
-    const group = WRITING_TOOL_GROUPS.find((entry) => entry.id === tool.group);
-    if (!group) throw new Error(`group ${tool.group}`);
-    const radio = rail.getByRole("group", { name: group.label, exact: true }).getByRole("radio", { name: `${tool.label}（${tool.english}）`, exact: true });
-    await expect(page.locator(`select[aria-label="AIツール"] > optgroup[label="${group.label}"] > option[value="${tool.id}"]`)).toHaveCount(1);
-    const label = radio.locator("..");
-    await expect(label.locator("svg")).toHaveAttribute("aria-hidden", "true");
-    const text = label.getByText(tool.label, { exact: true });
-    expect(await text.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(14);
-    const bounds = await label.boundingBox();
-    expect(bounds?.height).toBeGreaterThanOrEqual(44);
-    expect(bounds?.width).toBeGreaterThanOrEqual(44);
+  // The tools appear after the target is chosen: revising tools for text, writing tools for a caret.
+  await selectParagraphText(page, "本文");
+  await page.keyboard.press("Control+k");
+  const dialog = page.getByRole("dialog", { name: "AI編集コマンド" });
+  const revise = WRITING_TOOLS.filter((tool) => tool.group !== "write");
+  for (const tool of revise) {
+    const radio = dialog.getByRole("radio", { name: tool.label, exact: true });
+    const chip = radio.locator("..");
+    expect(await chip.evaluate((element) => parseFloat(getComputedStyle(element.querySelector("span") ?? element).fontSize))).toBeGreaterThanOrEqual(14);
+    const bounds = await chip.boundingBox();
+    // Sub-pixel layout can report 35.99…px for a 2.25rem chip.
+    expect(Math.round(bounds?.height ?? 0)).toBeGreaterThanOrEqual(36); expect(bounds?.width).toBeGreaterThanOrEqual(44);
   }
-  const fileTab = page.getByRole("tablist", { name: "開いている作品" }).getByRole("tab").first();
-  expect(await fileTab.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(15);
-  await rail.getByRole("radio", { name: "書き直し（Rewrite）", exact: true }).focus();
+  await expect(dialog.getByRole("radio")).toHaveCount(revise.length + 2); // plus the two candidate-count radios
+  await dialog.getByRole("radio", { name: "書き直し", exact: true }).focus();
   await page.keyboard.press("ArrowRight");
-  await expect(rail.getByRole("radio", { name: "文体変換（Transform）", exact: true })).toBeChecked();
-  await rail.getByRole("radio", { name: "自由指示（Custom）", exact: true }).focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(rail.getByRole("radio", { name: "中間補完（Infill）", exact: true })).toBeChecked();
+  await expect(dialog.getByRole("radio", { name: "文体変換", exact: true })).toBeChecked();
+  await page.keyboard.press("Escape"); await expect(page.getByRole("dialog")).toHaveCount(0);
+  // placeCaret waits until the collapsed selection reaches ProseMirror before the shortcut.
+  await placeCaret(page, "本文はツールの選択だけでは変更しません。".length); await page.keyboard.press("Control+k");
+  await expect(page.getByRole("dialog", { name: "AI文章挿入" })).toBeVisible();
+  const write = WRITING_TOOLS.filter((tool) => tool.group === "write");
+  for (const tool of write) await expect(page.getByRole("dialog").getByRole("radio", { name: tool.label, exact: true })).toHaveCount(1);
+  expect(WRITING_TOOL_GROUPS.map((group) => group.id)).toEqual(["revise", "write", "lookup"]);
+  await page.keyboard.press("Escape");
+  // The AI panel sits in the margin column and leaves the manuscript uncovered.
+  await selectParagraphText(page, "本文"); await page.keyboard.press("Control+k");
+  const panelBox = await dialog.boundingBox(); const editorBox = await editor.boundingBox();
+  if (!panelBox || !editorBox) throw new Error("Missing layout boxes");
+  expect(panelBox.x).toBeGreaterThanOrEqual(editorBox.x + editorBox.width);
+  await expect(editor.locator(".ai-target")).toHaveText("本文");
+  await page.keyboard.press("Escape"); await expect(editor.locator(".ai-target")).toHaveCount(0);
   await rail.getByRole("button", { name: "作品メモリ", exact: true }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "サイドパネルを閉じる" })).toBeFocused();
@@ -53,7 +68,8 @@ test("keeps the manuscript prominent and preserves hidden panel drafts and the e
   await expect(editor).toBeEditable();
   await editor.fill("雨の匂いが、窓の隙間から流れ込んでいた。\n「まだ、帰らないの」\n彼女は答えず、遠くの灯りを見つめていた。");
   const bounds = await editor.boundingBox();
-  expect(bounds?.y).toBeLessThan(280); expect(bounds?.width).toBeGreaterThan(850);
+  // One top bar and one slim toolbar above the text; the line stays near 40 characters.
+  expect(bounds?.y).toBeLessThan(120); expect(bounds?.width).toBeGreaterThan(700); expect(bounds?.width).toBeLessThanOrEqual(800);
   await expect(page.getByRole("complementary", { name: "執筆サイドパネル" })).toBeHidden();
   await page.getByRole("button", { name: "作品メモリ", exact: true }).click();
   await page.getByRole("textbox", { name: /^登場人物メモ/u }).fill("葵：言葉にするまで少し時間がかかる。");
@@ -92,7 +108,10 @@ test("opens suggestions from a real right click and compares before one-step ado
   await expect(dialog.getByRole("region", { name: "推敲する原文" })).toContainText(target);
   await dialog.getByRole("button", { name: "文のリズム", exact: true }).click();
   await dialog.getByRole("button", { name: "生成", exact: true }).click();
-  await expect(dialog.getByLabel("言い換え候補の比較")).toBeVisible();
+  await expect(dialog.getByRole("tablist", { name: "編集候補" })).toBeVisible();
+  // Candidates start with the diff in view; the original is not repeated above it.
+  await expect(dialog.getByRole("region", { name: "候補 1 の原文との差分" })).toBeInViewport();
+  await expect(dialog.getByRole("region", { name: "推敲する原文" })).toHaveCount(0);
   await expect(editor).toHaveText(`前。${target}後。`);
   await dialog.getByRole("tab", { name: "候補 2", exact: true }).click();
   await expect(dialog.getByRole("region", { name: "候補 2 の原文との差分" })).toBeVisible();

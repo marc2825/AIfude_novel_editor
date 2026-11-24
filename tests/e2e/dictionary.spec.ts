@@ -1,13 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { dictionaryRequestSchema } from "../../src/domain/dictionary";
-import { manuscriptEditor, selectParagraphText } from "./ai-edit-helpers";
+import { chooseAiTool, manuscriptEditor, selectParagraphText } from "./ai-edit-helpers";
 
 async function openDictionary(page: import("@playwright/test").Page) {
-  const toolSelect = page.getByRole("combobox", { name: "AIツール", exact: true });
-  if (await toolSelect.isVisible()) await toolSelect.selectOption("dictionary");
-  else await page.getByRole("radio", { name: "辞書（Dictionary）", exact: true }).check();
   await selectParagraphText(page, "余韻");
-  await page.keyboard.press("Control+k");
+  await page.keyboard.press("Control+k"); await chooseAiTool(page, "辞書");
   const dialog = page.getByRole("dialog", { name: "語句を調べる", exact: true });
   await expect(dialog).toBeVisible(); return dialog;
 }
@@ -25,7 +22,6 @@ test("right-click dictionary uses the real API with only the word and never offe
     expect(value).not.toHaveProperty("storyMemory");
     expect(value).not.toHaveProperty("selectionText");
   });
-  await page.getByRole("radio", { name: "辞書（Dictionary）", exact: true }).check();
   await selectParagraphText(page, "余韻");
   const point = await page.evaluate(() => {
     const box = window.getSelection()?.getRangeAt(0).getBoundingClientRect();
@@ -86,7 +82,7 @@ test("dictionary failure permits explicit Retry or search and preserves manuscri
   await page.keyboard.press("Control+s"); await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
 });
 
-test("dictionary results expire on selection changes and mode switching closes the lookup", async ({ page }) => {
+test("dictionary results expire on selection changes and switching the tool replaces the lookup", async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 720 });
   await page.goto("/"); const editor = manuscriptEditor(page); await expect(editor).toBeEditable();
   await editor.fill("余韻と余白"); const dialog = await openDictionary(page);
@@ -99,21 +95,24 @@ test("dictionary results expire on selection changes and mode switching closes t
   await page.getByRole("button", { name: "AI画面に戻る" }).click();
   await expect(dialog.getByText(/この辞書照会は期限切れ/u)).toBeVisible();
   await expect(dialog.getByRole("region", { name: "LLMによる語句の説明" })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "本文へ", exact: true }).click();
-  await page.getByRole("combobox", { name: "AIツール", exact: true }).selectOption("rewrite");
-  await expect(dialog).toHaveCount(0); await expect(editor).toHaveText("余韻と余白");
+  await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0);
+  // A fresh lookup can be replaced by another tool from inside the panel.
+  await selectParagraphText(page, "余白"); await page.keyboard.press("Control+k"); await chooseAiTool(page, "辞書");
+  await expect(dialog).toBeVisible(); await chooseAiTool(page, "書き直し");
+  await expect(dialog).toHaveCount(0); await expect(page.getByRole("dialog", { name: "AI編集コマンド" })).toBeVisible();
+  await expect(editor).toHaveText("余韻と余白");
 });
 
 test("dictionary requires a word selection and rejects oversized queries without sending", async ({ page }) => {
   await page.goto("/"); const editor = manuscriptEditor(page); await expect(editor).toBeEditable();
   await editor.fill("語".repeat(101));
-  await page.getByRole("radio", { name: "展開を指定（Guided Write）", exact: true }).focus();
-  await page.keyboard.press("ArrowDown");
-  await expect(page.getByRole("radio", { name: "辞書（Dictionary）", exact: true })).toBeChecked();
+  // Without selected words the dictionary is not offered at all.
   await editor.focus(); await page.keyboard.press("Control+k");
-  await expect(page.getByText("意味を調べる語句を選択してください。")).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "AI文章挿入" })).toBeVisible();
+  await expect(page.getByRole("dialog").getByRole("radio", { name: "辞書", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape"); await expect(page.getByRole("dialog")).toHaveCount(0);
   await selectParagraphText(page, "語".repeat(101)); await page.keyboard.press("Control+k");
+  await page.getByRole("dialog").getByRole("radio", { name: "辞書", exact: true }).click({ force: true });
   await expect(page.getByText("意味を調べる語句を1〜100文字で選択してください。")).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "語句を調べる" })).toHaveCount(0);
 });

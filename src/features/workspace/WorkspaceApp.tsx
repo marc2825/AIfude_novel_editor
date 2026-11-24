@@ -1,5 +1,5 @@
 "use client";
-import { writingToolOperation } from "../ai-edit/writing-tools";
+import { DEFAULT_WRITING_TOOL_MEMORY, type WritingToolMemory } from "../ai-edit/writing-tools";
 import { TypographyPanel } from "./TypographyPanel";
 import { useOnline } from "../offline/use-online";
 import { PwaControls } from "../offline/PwaControls";
@@ -32,7 +32,6 @@ import {
   type AiEditBoundaryHandle,
 } from "../ai-edit/AiEditBoundary";
 import { AiEditErrorBoundary } from "../ai-edit/AiEditErrorBoundary";
-import type { WritingToolId } from "../ai-edit/writing-tools";
 import {
   resolveRuntimeModel,
   type PublicAiRuntime,
@@ -91,30 +90,37 @@ function aiRuntimeLabel(
   return `AI：${model.displayName}（${kind}${destination}）`;
 }
 
+/** The brand mark: a brush tip split into the writer's green and the AI's gold. */
+function BrandMark() {
+  return <svg className={styles.brandMark} viewBox="0 0 160 160" aria-hidden="true" focusable="false">
+    <g transform="translate(83 76) rotate(40)">
+      <rect x="-10" y="-84" width="20" height="80" rx="10" fill="var(--ink)" />
+      <rect x="-15" y="-16" width="30" height="21" rx="6" fill="var(--accent)" />
+      <path d="M-15 4 C-24 24 -20 54 0 94 C3 64 3 32 -1.5 4 Z" fill="var(--accent)" />
+      <path d="M2.5 4 C7 32 4 64 0 94 C20 54 24 24 15 4 Z" fill="var(--ai)" />
+    </g>
+  </svg>;
+}
+
 function Header({
   aiRuntime,
   modelPreference = AI_MODEL_PREFERENCE_AUTOMATIC,
   status,
-  workspaceTitle,
 }: Readonly<{
   aiRuntime: AiRuntimeInfo;
   modelPreference?: AiModelPreference;
   status: string;
-  workspaceTitle?: string;
 }>) {
   return (
     <header className="workspace-header">
       <div>
-        <span className={styles.brandMark} aria-hidden="true">文</span>
+        <BrandMark />
         <h1 id="product-title">AIFUDE</h1>
-        {workspaceTitle === undefined ? null : (
-          <p className={styles.workspaceTitle}>{workspaceTitle}</p>
-        )}
         <p aria-label="AI実行環境" className={styles.aiRuntime}>
           {aiRuntimeLabel(aiRuntime, modelPreference)}
         </p>
       </div>
-      <p className="status" role="status" aria-live="polite">
+      <p className="status" role="status" aria-live="polite" data-state={status}>
         {status}
       </p>
     </header>
@@ -147,7 +153,8 @@ export function WorkspaceApp({
     if (panel === "feedback") setFeedbackOpened(true);
     setActivePanel(panel);
   }, []);
-  const [writingTool, setWritingTool] = useState<WritingToolId>("rewrite");
+  // The last tool of each kind; the selection decides which kind a new AI session uses.
+  const [toolMemory, setToolMemory] = useState<WritingToolMemory>(DEFAULT_WRITING_TOOL_MEMORY);
   const [configuredRuntime, setConfiguredRuntime] = useState(initialRuntime);
   const baseRuntimeRef = useRef(initialRuntime);
   const connectionPanelRef = useRef<AiConnectionSettingsHandle>(null);
@@ -223,6 +230,9 @@ export function WorkspaceApp({
 
   const onAiCommand = useCallback((editor: Editor) => {
     return aiEditBoundaryRef.current?.invoke(editor) ?? false;
+  }, []);
+  const onDictionaryCommand = useCallback((editor: Editor) => {
+    return aiEditBoundaryRef.current?.invoke(editor, undefined, "dictionary") ?? false;
   }, []);
 
   const onEditorReady = useCallback(
@@ -361,7 +371,6 @@ export function WorkspaceApp({
     return result;
   }, [confirmDiscardMemory, deleteWorkspace, invalidateConnection, refreshDraftNotice]);
   const filesUi = <WorkspaceFiles
-    uiState={editorSessions.uiState}
     activeProjectId={state.phase === "ready" ? state.workspace.project.id : null}
     disabled={state.phase === "ready" ? state.access !== "editable" || state.operation !== "idle" : state.phase !== "deleted"}
     files={state.phase === "ready" || state.phase === "deleted" || state.phase === "locked" ? state.files : []}
@@ -424,7 +433,6 @@ export function WorkspaceApp({
   if (state.phase === "deleted") {
     return (
       <WorkspaceLayout active={activePanel} onActiveChange={changePanel}
-        writingTool={writingTool}
         header={<Header aiRuntime={aiRuntime} status="削除済み" />} files={filesUi} alerts={unlockUi} secretAction={secretAction}
         panels={{
         typography: null, feedback: null, settings: null, memory: null, chapters: null, history: null, connections: connectionUi,
@@ -442,7 +450,6 @@ export function WorkspaceApp({
   if (state.phase === "locked") {
     return (
       <WorkspaceLayout active={activePanel} onActiveChange={changePanel}
-        writingTool={writingTool}
         header={<Header aiRuntime={aiRuntime} status="ロック中" />} files={filesUi} alerts={null}
         panels={{
           typography: null, feedback: null, settings: null, memory: null, chapters: null, history: null, connections: connectionUi,
@@ -484,9 +491,9 @@ export function WorkspaceApp({
 
   return (
     <WorkspaceLayout active={activePanel} onActiveChange={changePanel}
-      writingTool={writingTool} onWritingToolChange={setWritingTool} secretAction={secretAction}
+      secretAction={secretAction}
       header={<Header aiRuntime={aiRuntime} modelPreference={state.workspace.project.aiModelPreference}
-        status={saveStatus} workspaceTitle={state.workspace.project.title} />}
+        status={saveStatus} />}
       files={filesUi}
       alerts={<>
         {!connectionAllowed ? <p className={styles.feedback} role="status">{online ? "オフライン用画面です。AIを使うには設定から保存してオンライン画面へ戻ってください。" : "オフラインです。本文の編集と端末への保存は続けられます。AIは停止し、接続が戻っても自動送信しません。"}</p> : null}
@@ -503,8 +510,8 @@ export function WorkspaceApp({
           confirmExport={() => confirmSecretExport(state.secret)} />,
         feedback: <>{feedbackOpened ? <DiagnosticsPanel key={`diagnostics:${state.workspace.chapter.id}:${state.editorSession}`} editor={activeEditor} context={captureContext}
           onAi={(editor, instruction) => {
-            setWritingTool("custom"); setActivePanel(null);
-            requestAnimationFrame(() => aiEditBoundaryRef.current?.invoke(editor, instruction));
+            setActivePanel(null);
+            requestAnimationFrame(() => aiEditBoundaryRef.current?.invoke(editor, instruction, "custom"));
           }}><AiFeedbackPanel editor={activeEditor} contextRevision={state.workspace.project.contextRevision} runtime={aiRuntime}
             consent={state.workspace.project.aiConsent} modelPreference={state.workspace.project.aiModelPreference} onConsentChange={updateAiConsent} /></DiagnosticsPanel> : null}</>,
         settings: <><WorkspaceSettings embedded ref={settingsPanelRef} onDirtyChange={onSettingsDirtyChange}
@@ -542,13 +549,12 @@ export function WorkspaceApp({
           <SyncPanel key={`sync:${state.workspace.project.id}`} actions={syncActions} disabled={!editable} onSave={saveCurrent} onImport={importLibrary} transport={offlineShell ? undefined : syncTransport} /></>,
       }}
       editor={<div className={styles.editorPanel} id="workspace-editor" role="tabpanel" aria-label={state.workspace.project.title}>
-        <div className={styles.manuscriptToolbar}>
-          <span>{state.workspace.chapter.title}</span>
-          <SearchPanel key={`search:${state.workspace.chapter.id}:${state.editorSession}`} editor={activeEditor} disabled={!editable} />
-        </div>
         <NovelEditor
-          dictionaryMode={writingTool === "dictionary"}
-          completionMode={writingToolOperation(writingTool)}
+          onDictionaryCommand={onDictionaryCommand}
+          toolbarStart={<button type="button" className={styles.chapterButton} aria-label={`${state.workspace.chapter.title}（章とアウトラインを開く）`}
+            aria-expanded={activePanel === "chapters"} onClick={() => changePanel(activePanel === "chapters" ? null : "chapters")}>
+            <span>{state.workspace.chapter.title}</span></button>}
+          toolbarEnd={<SearchPanel key={`search:${state.workspace.chapter.id}:${state.editorSession}`} editor={activeEditor} disabled={!editable} />}
           sessions={editorSessions}
           sessionKey={`${state.workspace.project.id}:${state.workspace.chapter.id}:${state.editorSession}`}
           positionKey={`${state.workspace.project.id}:${state.workspace.chapter.id}`}
@@ -566,7 +572,7 @@ export function WorkspaceApp({
     >
       <AiEditErrorBoundary>
         <AiEditBoundary
-          writingTool={writingTool}
+          toolMemory={toolMemory} onToolMemoryChange={setToolMemory}
           key={`${state.workspace.project.id}:${state.workspace.chapter.id}:${state.editorSession}`}
           captureContext={captureContext} consent={state.workspace.project.aiConsent}
           modelPreference={state.workspace.project.aiModelPreference} onAccepted={requestImmediateSave}

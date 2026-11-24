@@ -15,6 +15,7 @@ export const WRITING_TOOLS = [
   { id: "expand", group: "revise", label: "膨らませる", english: "Expand", description: "新しい事実を加えず、原文の描写を詳しくします。" },
   { id: "condense", group: "revise", label: "短くする", english: "Condense", description: "要点を保ち、冗長な表現を減らします。" },
   { id: "custom", group: "revise", label: "自由指示", english: "Custom", description: "出来事・人物・視点・事実を保つ範囲で、自由に指示します。" },
+  { id: "prompt-insert", group: "write", label: "指示から書く", english: "Prompt", description: "入力した指示だけから文章を作ります。本文・前後の文脈は送りません。" },
   { id: "infill", group: "write", label: "中間補完", english: "Infill", description: "空白だけを選択するか途中の空段落にカーソルを置き、前後をつなぐ文章を作ります。" },
   { id: "continue", group: "write", label: "続きを書く", english: "Continue", description: "現在の章の末尾にカーソルを置き、直前の文章に続く候補を作ります。" },
   { id: "context-insert", group: "write", label: "文脈で挿入", english: "Context Insert", description: "挿入位置にカーソルを置き、書きたい内容と前後の文脈に沿った文章を作ります。" },
@@ -27,9 +28,35 @@ export type WritingToolId = typeof WRITING_TOOLS[number]["id"];
 export function writingToolOperation(tool: WritingToolId): CompletionOperation | undefined {
   return tool === "describe" || tool === "guided-write" ? "context-insert" : isCompletionOperation(tool) ? tool : undefined;
 }
+/** How the manuscript selection looks when an AI tool is requested. */
+export type WritingToolTarget = "text" | "blank" | "caret";
+export type WritingToolMemory = Readonly<{ revise: WritingToolId; write: WritingToolId }>;
+export const DEFAULT_WRITING_TOOL_MEMORY: WritingToolMemory = Object.freeze({ revise: "rewrite", write: "prompt-insert" });
+
+export function writingToolGroup(tool: WritingToolId): WritingToolGroupId {
+  return WRITING_TOOLS.find((entry) => entry.id === tool)?.group ?? "revise";
+}
+
+/** Tools offered for a target: revising needs selected text, writing needs a caret or a blank gap. */
+export function writingToolsFor(target: WritingToolTarget): readonly (typeof WRITING_TOOLS)[number][] {
+  return WRITING_TOOLS.filter((tool) => target === "text" ? tool.group !== "write" : tool.group === "write");
+}
+
+/** The tool a new session starts with. The selection decides the group; the last tool of that group is reused. */
+export function resolveWritingTool(target: WritingToolTarget, memory: WritingToolMemory): WritingToolId {
+  if (target === "text") return writingToolGroup(memory.revise) === "revise" ? memory.revise : DEFAULT_WRITING_TOOL_MEMORY.revise;
+  if (target === "blank") return "infill";
+  return writingToolGroup(memory.write) === "write" ? memory.write : DEFAULT_WRITING_TOOL_MEMORY.write;
+}
+
+export function rememberWritingTool(memory: WritingToolMemory, tool: WritingToolId): WritingToolMemory {
+  const group = writingToolGroup(tool);
+  return group === "revise" ? { ...memory, revise: tool } : group === "write" ? { ...memory, write: tool } : memory;
+}
+
 export function writingToolInput(tool: Exclude<WritingToolId, "dictionary">): Readonly<{ instruction: string; presetId: AiEditPresetId | null; candidateCount?: 2 }> {
   if (tool === "describe" || tool === "guided-write") return { presetId: null, instruction: "", candidateCount: 2 };
-  if (tool === "context-insert") return { presetId: null, instruction: "" };
+  if (tool === "context-insert" || tool === "prompt-insert") return { presetId: null, instruction: "" };
   if (tool === "infill") return { presetId: null, instruction: "前後の文章を自然につなぐように、空白部分だけを補完してください。" };
   if (tool === "continue") return { presetId: null, instruction: "直前の文章の文体と視点に合わせて、物語の続きを書いてください。" };
   const presetId = writingToolPreset(tool);
@@ -41,6 +68,7 @@ export function writingToolPreset(tool: Exclude<WritingToolId, "dictionary">): A
     case "describe":
     case "guided-write":
     case "context-insert":
+    case "prompt-insert":
     case "infill":
     case "continue":
     case "rewrite": return null;

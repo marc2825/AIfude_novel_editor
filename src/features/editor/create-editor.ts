@@ -15,6 +15,7 @@ import {
 import { PlainTextHistory } from "./extensions/plain-text-history";
 import { createEditGuardExtension } from "./plugins/edit-guard";
 import { DiagnosticHighlights } from "../feedback/diagnostic-anchors";
+import { AiTargetHighlight } from "./extensions/ai-target";
 import {
   createAiCommandExtension,
   type AiCommandHandler,
@@ -81,6 +82,7 @@ export function createEditorOptions(
       PlainTextHistory,
       createEditGuardExtension(initialContentRevision),
       DiagnosticHighlights,
+      AiTargetHighlight,
       ...(onAiCommand === undefined
         ? []
         : [createAiCommandExtension(onAiCommand)]),

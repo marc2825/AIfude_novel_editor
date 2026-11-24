@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
-import { manuscriptEditor, placeCaret, openWorkspacePanel } from "./ai-edit-helpers";
+import { manuscriptEditor, openWorkMenu, openWorkspacePanel, placeCaret, savedWorkButtons, workMenuButton } from "./ai-edit-helpers";
 
 async function save(page: Page) {
   await page.getByRole("button", { name: "保存", exact: true }).click();
@@ -37,19 +37,18 @@ test("manages chapter outlines and order, counts the whole work and persists a w
   await expect(page.getByRole("button", { name: "現在の章を削除", exact: true })).toBeDisabled();
 });
 
-test("preserves live Undo and caret through file/chapter switches and restores caret and closed tabs on reload", async ({ page }) => {
+test("preserves live Undo and caret through work/chapter switches and restores the caret on reload", async ({ page }) => {
   await page.goto("/"); const editor = manuscriptEditor(page); await editor.fill("第一作品"); await save(page); await placeCaret(page, 2);
-  await page.getByRole("button", { name: "新規作品", exact: true }).click(); await expect(editor).toHaveText(""); await editor.fill("第二作品"); await save(page);
-  const tabs = page.getByRole("tablist", { name: "開いている作品", exact: true }).getByRole("tab");
-  await tabs.nth(0).click(); await expect(editor).toHaveText("第一作品"); await editor.focus();
+  await (await workMenuButton(page, "新規作品")).click(); await expect(editor).toHaveText(""); await editor.fill("第二作品"); await save(page);
+  const tabs = savedWorkButtons(page);
+  await openWorkMenu(page); await tabs.nth(0).click(); await expect(editor).toHaveText("第一作品"); await editor.focus();
   await expect.poll(() => page.evaluate(() => window.getSelection()?.anchorOffset)).toBe(2);
   await openWorkspacePanel(page, "章とアウトライン");
   await page.getByRole("button", { name: "章を追加", exact: true }).click(); await expect(editor).toHaveText("");
   await page.getByRole("button", { name: "第一章", exact: true }).click(); await expect(editor).toHaveText("第一作品");
   await editor.focus(); await page.keyboard.press("Control+z"); await expect(editor).toHaveText("");
   await page.keyboard.press("Control+Shift+z"); await expect(editor).toHaveText("第一作品"); await save(page); await placeCaret(page, 1);
-  await page.getByRole("button", { name: "無題の作品のタブを閉じる", exact: true }).nth(1).click();
-  await expect(tabs).toHaveCount(1); await page.reload(); await expect(editor).toHaveText("第一作品"); await expect(tabs).toHaveCount(1);
+  await page.reload(); await expect(editor).toHaveText("第一作品"); await expect(tabs).toHaveCount(2);
   await editor.focus(); await expect.poll(() => page.evaluate(() => window.getSelection()?.anchorOffset)).toBe(1);
 });
 
@@ -92,7 +91,7 @@ test("exports every work and restores copies with chapters and history, preservi
   await page.getByRole("button", { name: "章を追加", exact: true }).click(); await expect(editor).toHaveText(""); await editor.fill("二章の本文"); await nameChapter(page, "二章", "終わり");
   await page.getByRole("button", { name: "保存履歴・復元", exact: true }).click(); await page.getByRole("textbox", { name: "履歴の名前", exact: true }).fill("作品の履歴");
   await page.getByRole("button", { name: "現在の状態を履歴に保存", exact: true }).click(); await expect(page.getByRole("button", { name: /^作品の履歴/u })).toBeVisible();
-  await page.getByRole("button", { name: "新規作品", exact: true }).click(); await expect(editor).toHaveText(""); await editor.fill("別作品"); await save(page);
+  await (await workMenuButton(page, "新規作品")).click(); await expect(editor).toHaveText(""); await editor.fill("別作品"); await save(page);
   await openWorkspacePanel(page, "ファイルとバックアップ");
   const pending = page.waitForEvent("download"); await page.getByRole("button", { name: "全作品を一括バックアップ", exact: true }).click(); const download = await pending;
   const path = await download.path(); if (!path) throw new Error("Missing backup"); const buffer = await readFile(path);
@@ -100,7 +99,7 @@ test("exports every work and restores copies with chapters and history, preservi
   const input = page.getByLabel("一括バックアップファイル", { exact: true });
   page.once("dialog", (dialog) => dialog.dismiss()); await input.setInputFiles({ name: "library.json", mimeType: "application/json", buffer });
   await expect(page.getByText("復元を取り消しました。", { exact: true })).toBeVisible();
-  const tabs = page.getByRole("tablist", { name: "開いている作品", exact: true }).getByRole("tab"); await expect(tabs).toHaveCount(2);
+  const tabs = savedWorkButtons(page); await expect(tabs).toHaveCount(2);
   page.once("dialog", (dialog) => dialog.accept()); await input.setInputFiles({ name: "library.json", mimeType: "application/json", buffer });
   await expect(page.getByText("2作品をコピーとして復元しました。", { exact: true })).toBeVisible(); await expect(tabs).toHaveCount(4); await expect(editor).toHaveText("別作品");
   await page.reload(); await expect(tabs).toHaveCount(4); await expect(editor).toHaveText("別作品");

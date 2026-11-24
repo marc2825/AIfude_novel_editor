@@ -137,9 +137,14 @@ test("opens insertion at a caret and rejects blank-only and oversized edit selec
   await expect(page.getByRole("dialog", { name: "AI文章挿入" })).toBeVisible();
   await page.keyboard.press("Escape");
 
+  // A blank-only selection is never an edit target; it opens the infill tool instead.
   await selectParagraphText(page, "　 ");
   await page.keyboard.press("Control+k");
-  await expect(page.getByText("編集する文字列を選択してください")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "AI中間補完" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "AI編集コマンド" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(editor).toHaveText(`前　 後${"長".repeat(2_001)}`);
 
   await selectParagraphText(page, "長".repeat(2_001));
   await page.keyboard.press("Control+k");

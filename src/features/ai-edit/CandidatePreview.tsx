@@ -123,7 +123,7 @@ export function CandidatePreview({
 
   return (
     <section aria-labelledby="candidate-preview-title" className={styles.candidatePreview}>
-      <p className={styles.candidateSummary} role="status">
+      <p className={styles.visuallyHidden} role="status">
         {candidates.length}件の候補を受信しました。
       </p>
       {state.input.targetCharacters !== undefined ? <p className={styles.lengthDelta}>
@@ -142,16 +142,6 @@ export function CandidatePreview({
             : `${modelLabel} / ${candidate.model}（${candidate.providerId}）`}
         </p>
       </div>
-
-      {candidates.length > 1 ? <div className={styles.comparisonGrid} aria-label={state.comparisonResults ? "AI出力の並列比較" : "言い換え候補の比較"}>
-        {candidates.map((item) => <article key={item.id} data-selected={item.id === candidate.id} aria-label={`${item.providerId}の候補${item.index + 1}`}>
-          <div className={styles.cardHeading}><h4>{findAiProviderDefinition(item.providerId)?.displayName ?? item.providerId}<span>候補 {item.index + 1}</span></h4>
-            <p>{item.model}</p></div>
-          <p className={styles.lengthDelta}>{codePointLength(item.replacementText)}文字 · 原文比 {codePointLength(item.replacementText) - codePointLength(state.snapshot.originalText) > 0 ? "+" : ""}{codePointLength(item.replacementText) - codePointLength(state.snapshot.originalText)}文字</p>
-          <p className={styles.candidateText}>{item.replacementText}</p>
-          <button type="button" onClick={() => onSelectCandidate(item.id)} aria-pressed={item.id === candidate.id}>この候補のDiffを確認</button>
-        </article>)}
-      </div> : null}
 
       <div
         aria-label="編集候補"
@@ -191,13 +181,10 @@ export function CandidatePreview({
           key={item.id}
           role="tabpanel"
         >
+          <p className={styles.lengthDelta}>
+            {state.comparisonResults ? `${findAiProviderDefinition(item.providerId)?.displayName ?? item.providerId} · ` : ""}{codePointLength(item.replacementText)}文字{state.snapshot.from === state.snapshot.to ? "" : `（原文比 ${codePointLength(item.replacementText) - codePointLength(state.snapshot.originalText) > 0 ? "+" : ""}${codePointLength(item.replacementText) - codePointLength(state.snapshot.originalText)}文字）`}
+          </p>
           <div className={styles.reviewColumns}>
-          <div>
-            <h4>{state.snapshot.from === state.snapshot.to ? "挿入する本文" : "置換する本文"}</h4>
-            <p aria-label="候補本文" className={styles.candidateText}>
-              {item.id === candidate.id ? merged ?? item.replacementText : item.replacementText}
-            </p>
-          </div>
           {item.id === candidate.id ? (
             <DiffPreview
               candidateId={item.id}
@@ -207,12 +194,18 @@ export function CandidatePreview({
               requestId={state.requestId}
             />
           ) : null}
+          <div>
+            <h4>{state.snapshot.from === state.snapshot.to ? "挿入する本文" : "置換する本文"}</h4>
+            <p aria-label="候補本文" className={styles.candidateText}>
+              {item.id === candidate.id ? merged ?? item.replacementText : item.replacementText}
+            </p>
+          </div>
           </div>
           <div>
             <h4>変更説明</h4>
             <p className={styles.candidateMetadata}>{item.explanation}</p>
           </div>
-          <div>
+          <div className={item.riskNotes.length === 0 ? undefined : styles.detectedNotice}>
             <h4>注意事項</h4>
             {item.riskNotes.length === 0 ? (
               <p className={styles.candidateMetadata}>なし</p>
@@ -242,8 +235,8 @@ export function CandidatePreview({
           <p>上の本文とDiffは選んだ差分を合成した結果です。採用は1回のUndoで戻せます。</p>
         </>}
       </details> : null}
-      {protectedChanges.length ? <p role="alert">必須文字列の出現回数が変わります：{protectedChanges.join("、")}。採用できません。</p> : null}
-      {warnings.length ? <section aria-label="保持条件の確認"><h4>字面の変更を確認</h4>{warnings.map((warning) => <p key={warning}>{warning}</p>)}<p>出来事・視点・意味・設定の整合性は機械的に保証していません。</p></section> : null}
+      {protectedChanges.length ? <p role="alert" className={styles.errorMessage}>必須文字列の出現回数が変わります：{protectedChanges.join("、")}。採用できません。</p> : null}
+      {warnings.length ? <section aria-label="保持条件の確認" className={styles.detectedNotice}><h4>字面の変更を確認</h4>{warnings.map((warning) => <p key={warning}>{warning}</p>)}<p>出来事・視点・意味・設定の整合性は機械的に保証していません。</p></section> : null}
       {applyError === null ? null : (
         <p className={styles.errorMessage} role="alert">
           {applyError}

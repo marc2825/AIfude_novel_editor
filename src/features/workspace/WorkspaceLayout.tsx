@@ -1,20 +1,25 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
-import { WRITING_TOOL_GROUPS, WRITING_TOOLS, type WritingToolId } from "../ai-edit/writing-tools";
 import { WorkspaceIcon } from "./WorkspaceIcon";
 import styles from "./Workspace.module.css";
 
 export type WorkspacePanelId = "memory" | "chapters" | "history" | "settings" | "connections" | "backup" | "feedback" | "typography";
-const PANELS: readonly WorkspacePanelId[] = ["memory", "chapters", "history", "settings", "connections", "backup", "feedback", "typography"];
+const PANELS: readonly WorkspacePanelId[] = ["backup", "chapters", "memory", "feedback", "history", "typography", "connections", "settings"];
 const LABELS: Record<WorkspacePanelId, string> = {
   typography: "組版と投稿用出力", feedback: "日本語診断とFeedback", memory: "作品メモリ", chapters: "章とアウトライン", history: "保存履歴・復元",
   settings: "設定とバックアップ", connections: "AI接続の設定・診断", backup: "ファイルとバックアップ",
 };
+/** Short words shown under the rail icons; the full name stays the accessible name. */
+const RAIL_TEXT: Record<WorkspacePanelId, string> = {
+  backup: "作品", chapters: "章", memory: "メモ", feedback: "診断", history: "履歴", typography: "組版", connections: "AI接続", settings: "設定",
+};
+/** The work itself first, the application settings last. */
+const WORK_PANELS: readonly WorkspacePanelId[] = ["backup", "chapters", "memory", "feedback", "history", "typography"];
+const APP_PANELS: readonly WorkspacePanelId[] = ["connections", "settings"];
 
-export function WorkspaceLayout({ header, files, editor, panels, alerts, children, active, onActiveChange, writingTool = "rewrite", onWritingToolChange, secretAction }: Readonly<{
+export function WorkspaceLayout({ header, files, editor, panels, alerts, children, active, onActiveChange, secretAction }: Readonly<{
   secretAction?: ReactNode;
-  writingTool?: WritingToolId; onWritingToolChange?: (tool: WritingToolId) => void;
   active: WorkspacePanelId | null; onActiveChange: (panel: WorkspacePanelId | null) => void;
   header: ReactNode; files: ReactNode; editor: ReactNode; alerts: ReactNode; children: ReactNode;
   panels: Record<WorkspacePanelId, ReactNode>;
@@ -38,67 +43,43 @@ export function WorkspaceLayout({ header, files, editor, panels, alerts, childre
     return () => { viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update); };
   }, []);
   function close() { onActiveChange(null); triggerRef.current?.focus(); }
-  function trigger(panel: WorkspacePanelId, text: string) {
-    return <button type="button" disabled={panels[panel] === null} aria-label={LABELS[panel]} aria-expanded={active === panel}
+  function trigger(panel: WorkspacePanelId) {
+    return <button key={panel} type="button" disabled={panels[panel] === null} aria-label={LABELS[panel]} aria-expanded={active === panel}
       aria-controls={`workspace-panel-${panel}`} onClick={(event) => {
         triggerRef.current = event.currentTarget; focusPanelRef.current = active !== panel;
         onActiveChange(active === panel ? null : panel);
-      }}><WorkspaceIcon name={panel} /><span>{text}</span></button>;
+      }}><WorkspaceIcon name={panel} /><span>{RAIL_TEXT[panel]}</span></button>;
   }
   return <main className={styles.workspace} ref={rootRef}>
     <div className={styles.topbar}>
       {header}
-      <nav aria-label="アプリの設定" className={styles.topActions}>
-        {secretAction}
-        {trigger("backup", "ファイル")}
-        {trigger("connections", "AI接続")}
-        {trigger("settings", "設定")}
-      </nav>
+      {files}
+      <span className={styles.topSpacer} aria-hidden="true" />
+      {secretAction ? <div className={styles.topActions}>{secretAction}</div> : null}
     </div>
-    {files}
     <div className={styles.workspaceAlerts}>{alerts}</div>
-    <div className={styles.workbench} data-writing-workbench>
-      <div className={styles.manuscriptArea}>{editor}</div>
+    <div className={styles.workbench} data-writing-workbench data-panel-open={active !== null}>
+      <nav aria-label="執筆の補助" className={styles.sideRail}>
+        {WORK_PANELS.map(trigger)}
+        <span className={styles.railSpacer} aria-hidden="true" />
+        {APP_PANELS.map(trigger)}
+      </nav>
       <aside data-writing-panel className={styles.sidePanel} hidden={active === null} aria-label="執筆サイドパネル"
         onKeyDown={(event) => {
           if (event.key === "Escape" && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) {
             event.preventDefault(); event.stopPropagation(); close();
           }
         }}>
-        <div className={styles.panelHeading}><h2>{active === null ? "執筆ツール" : LABELS[active]}</h2>
-          <button type="button" ref={closeRef} aria-label="サイドパネルを閉じる" onClick={close}>×</button></div>
+        <div className={styles.panelHeading}><h2>{active === null ? "執筆の補助" : LABELS[active]}</h2>
+          <button type="button" ref={closeRef} aria-label="サイドパネルを閉じる" onClick={close}><WorkspaceIcon name="close" /></button></div>
         {PANELS.map((panel) => <div key={panel} id={`workspace-panel-${panel}`}
           className={styles.panelContent} hidden={active !== panel}>{panels[panel]}</div>)}
       </aside>
-      <nav aria-label="執筆ツール" className={styles.sideRail}>
-        <label className={styles.mobileToolSelect}>AIツール
-          <select aria-label="AIツール" value={writingTool} disabled={!onWritingToolChange} onChange={(event) => {
-            const tool = WRITING_TOOLS.find((entry) => entry.id === event.target.value);
-            if (tool) onWritingToolChange?.(tool.id);
-          }}>{WRITING_TOOL_GROUPS.map((group) => <optgroup label={group.label} key={group.id}>
-            {WRITING_TOOLS.filter((tool) => tool.group === group.id).map((tool) => <option value={tool.id} key={tool.id}>{tool.label}</option>)}
-          </optgroup>)}</select>
-        </label>
-        <fieldset className={styles.writingTools}>
-          <legend className={styles.writingToolsTitle}>AIツール</legend>
-          {WRITING_TOOL_GROUPS.map((group) => <fieldset key={group.id} className={styles.writingToolGroup}>
-            <legend>{group.label}</legend>
-            {WRITING_TOOLS.filter((tool) => tool.group === group.id).map((tool) => <label key={tool.id} title={`${tool.english}：${tool.description}`}>
-              <input type="radio" name="writing-tool" aria-label={`${tool.label}（${tool.english}）`}
-                checked={writingTool === tool.id} disabled={!onWritingToolChange}
-                onChange={() => onWritingToolChange?.(tool.id)} />
-              <span className={styles.writingToolOption}><WorkspaceIcon name={tool.id} /><span>{tool.label}</span></span>
-            </label>)}
-          </fieldset>)}
-        </fieldset>
-        <div className={styles.panelTools}>
-          {trigger("feedback", "診断")}
-          {trigger("memory", "メモリ")}
-          {trigger("chapters", "章")}
-          {trigger("history", "履歴")}
-          {trigger("typography", "組版")}
-        </div>
-      </nav>
+      <div className={styles.manuscriptArea} data-manuscript-area>{editor}</div>
+      {/* Reserved for the AI panel on wide screens, so a suggestion never covers the manuscript. */}
+      <div className={styles.aiMargin} data-ai-margin>
+        <p>文章を選んで <kbd>⌘ / Ctrl K</kbd> を押すと、AIの提案がここに出ます。</p>
+      </div>
     </div>
     {children}
   </main>;
