@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { manuscriptEditor, selectParagraphText, placeCaret } from "./ai-edit-helpers";
+import { chooseAiTool, manuscriptEditor, placeCaret, selectParagraphText } from "./ai-edit-helpers";
 import { parseWorkspaceSnapshot } from "../../src/domain/workspace";
 import { validateAiEditRequest, type AiEditRequest } from "../../src/domain/ai-edit";
 
@@ -33,12 +33,12 @@ test("protects annotated targets from AI and confirms Japanese formatting before
   await editor.focus(); await page.keyboard.press("Control+z"); await expect(editor).toHaveText("葵は叫ぶ!?..."); await expect(editor.locator("[data-novel-ruby]")).toHaveText("葵");
 });
 
-for (const [tool, label, briefLabel] of [["describe", "描写を足す（Describe）", "描きたい対象・場面"], ["guided-write", "展開を指定（Guided Write）", "次に起こしたいこと"]] as const) {
+for (const [tool, label, briefLabel] of [["describe", "描写を足す", "描きたい対象・場面"], ["guided-write", "展開を指定", "次に起こしたいこと"]] as const) {
   test(`${tool}: compares two contextual candidates and inserts only after explicit acceptance`, async ({ page }) => {
     const requests: AiEditRequest[] = [];
     await page.route("**/api/ai/edits", async (route) => { const parsed = validateAiEditRequest(route.request().postDataJSON()); if (!parsed.success) throw new Error("request"); requests.push(parsed.data); await route.continue(); });
     await page.goto("/"); const editor = manuscriptEditor(page); await expect(editor).toBeEditable(); await editor.fill("前。後。");
-    await page.getByRole("radio", { name: label, exact: true }).check(); await placeCaret(page, 2); await page.keyboard.press("Control+k");
+    await placeCaret(page, 2); await page.keyboard.press("Control+k"); await chooseAiTool(page, label);
     const dialog = page.getByRole("dialog", { name: "AI文脈挿入" }); await dialog.getByRole("textbox", { name: briefLabel }).fill("雨が窓を打つ音");
     await expect(dialog.getByRole("checkbox", { name: /追加事実/u })).not.toBeChecked(); await dialog.getByRole("button", { name: "条件を編集指示へ反映" }).click(); await dialog.getByRole("spinbutton", { name: "目標文字数" }).fill("120");
     expect(requests).toHaveLength(0); await dialog.getByRole("button", { name: "生成", exact: true }).click(); await expect(dialog.getByRole("tab", { name: "候補 2", exact: true })).toBeVisible();

@@ -3,7 +3,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { aiComparisonRequestSchema } from "../../src/domain/ai-comparison";
 import { WRITING_TOOLS, writingToolOperation } from "../../src/features/ai-edit/writing-tools";
 import { createAiEditSuccessResponseFixture } from "../fixtures/candidates";
-import { manuscriptEditor, placeCaret, selectParagraphText } from "../e2e/ai-edit-helpers";
+import { chooseAiTool, manuscriptEditor, openWorkMenu, placeCaret, selectParagraphText, workMenuButton } from "../e2e/ai-edit-helpers";
 
 // DOM selection emulates the result of native handles; OS long-press/IME is a separate NOT RUN gate.
 async function start(page: Page, text = "前。彼女は窓を見つめていた。後。") {
@@ -30,6 +30,14 @@ for (const width of [320, 375, 390, 430, 768, 1024]) {
     const errors: string[] = []; page.on("pageerror", (error) => errors.push(error.name));
     await start(page);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    // All eight rail entries keep a 44px target and their full short label; from 360px they fit without scrolling.
+    const rail = page.getByRole("navigation", { name: "執筆の補助", exact: true }).getByRole("button");
+    await expect(rail).toHaveCount(8);
+    for (const entry of await rail.all()) {
+      const box = await entry.boundingBox(); expect(box?.height).toBeGreaterThanOrEqual(44); expect(box?.width).toBeGreaterThanOrEqual(44);
+      expect(await entry.locator("span").evaluate((label) => label.scrollWidth <= label.clientWidth + 1)).toBe(true);
+      if (width >= 360) await insideViewport(page, entry);
+    }
     for (const name of ["保存", "章とアウトライン", "作品メモリ", "AI提案"]) {
       const control = page.getByRole("button", { name, exact: true });
       await insideViewport(page, control);
@@ -77,19 +85,19 @@ test("M-03/07: Japanese selection → tap → Diff → Accept → touch Undo/Red
 for (const tool of WRITING_TOOLS) {
   test(`M-03: touch opens and runs ${tool.english} without a shortcut`, async ({ page }) => {
     const editor = await start(page, "前。　後。");
-    await page.getByRole("combobox", { name: "AIツール", exact: true }).selectOption(tool.id);
     if (tool.id === "infill") await selectParagraphText(page, "　");
     else if (tool.id === "continue") await placeCaret(page, 5);
-    else if (writingToolOperation(tool.id) === "context-insert") await placeCaret(page, 2);
+    else if (tool.group === "write") await placeCaret(page, 2);
     else await selectParagraphText(page, "前。");
-    const label = tool.id === "dictionary" ? "辞書で調べる" : writingToolOperation(tool.id) === "context-insert" ? "文脈で挿入" : ["infill", "continue"].includes(tool.id) ? tool.label : "AI提案";
-    const dialog = await tapCommand(page, label);
+    // One trigger for every tool: the selection decides the kind, the tool is picked in the sheet.
+    const dialog = await tapCommand(page);
+    await chooseAiTool(page, tool.label);
     if (tool.id === "dictionary") {
       await dialog.getByRole("button", { name: "LLMで調べる", exact: true }).tap();
       await expect(dialog.getByRole("button", { name: "採用", exact: true })).toHaveCount(0);
       await expect(dialog.getByRole("region", { name: "LLMによる語句の説明" })).toBeVisible();
     } else {
-      await dialog.getByRole("textbox", { name: writingToolOperation(tool.id) === "context-insert" ? "書きたい内容" : "編集の指示", exact: true }).fill("雨音を自然に描いて");
+      await dialog.getByRole("textbox", { name: tool.id === "prompt-insert" ? "文章のプロンプト" : writingToolOperation(tool.id) === "context-insert" ? "書きたい内容" : "編集の指示", exact: true }).fill("雨音を自然に描いて");
       await dialog.getByRole("button", { name: "生成", exact: true }).tap();
       await expect(dialog.getByRole("button", { name: "採用", exact: true })).toBeVisible();
     }
@@ -171,11 +179,11 @@ test("M-02/07: chapter and project changes protect drafts across drawer switches
   await page.getByRole("button", { name: "第一章", exact: true }).tap();
   await expect(editor).toHaveText("第二章の本文。");
   await page.getByRole("button", { name: "サイドパネルを閉じる" }).tap();
-  await page.getByRole("button", { name: "作品操作", exact: true }).tap();
+  await openWorkMenu(page);
   page.once("dialog", (dialog) => dialog.dismiss());
-  await page.getByRole("button", { name: "新規作品", exact: true }).tap();
+  await (await workMenuButton(page, "新規作品")).tap();
   await expect(editor).toHaveText("第二章の本文。");
-  await page.getByRole("button", { name: "作品操作", exact: true }).tap();
+  await openWorkMenu(page);
   await page.getByRole("button", { name: "保存", exact: true }).tap();
   await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
   await page.reload(); await expect(editor).toHaveText("第二章の本文。");

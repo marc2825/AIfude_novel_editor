@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { manuscriptEditor, selectParagraphText } from "./ai-edit-helpers";
+import { manuscriptEditor, savedWorkButtons, selectParagraphText, workMenuButton } from "./ai-edit-helpers";
 
 test("moves a saved, non-open work to the trash after confirmation and keeps the open manuscript", async ({ page }) => {
   await page.goto("/"); const editor = manuscriptEditor(page); await expect(editor).toBeEditable();
   await editor.fill("最初の作品の本文"); await page.getByRole("button", { name: "保存", exact: true }).click();
-  await page.getByRole("button", { name: "新規作品", exact: true }).click();
+  await (await workMenuButton(page, "新規作品")).click();
   await expect(editor).toBeEditable(); await editor.fill("開いている作品の本文");
-  await page.getByRole("button", { name: "作品を管理", exact: true }).click();
+  await (await workMenuButton(page, "作品を管理")).click();
   const list = page.getByRole("region", { name: "保存済みの作品" }).getByRole("listitem");
   await expect(list).toHaveCount(2);
   const other = list.filter({ hasNotText: "開いています" });
@@ -19,7 +19,7 @@ test("moves a saved, non-open work to the trash after confirmation and keeps the
   await other.getByRole("button", { name: /ごみ箱へ移す$/u }).click();
   await expect(page.getByText("作品をごみ箱へ移しました。ごみ箱から復元できます。")).toBeVisible();
   await expect(list).toHaveCount(1); await expect(editor).toHaveText("開いている作品の本文");
-  await expect(page.getByRole("tablist", { name: "開いている作品" }).getByRole("tab")).toHaveCount(1);
+  await expect(savedWorkButtons(page)).toHaveCount(1);
   await expect(trash.getByRole("listitem")).toHaveCount(1);
 });
 

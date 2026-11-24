@@ -2,7 +2,7 @@
 
 import { completionCharactersSchema, isCompletionOperation } from "../../domain/completion";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 
 import {
   type AiEditErrorCode,
@@ -37,6 +37,7 @@ import type {
 import styles from "./AiEdit.module.css";
 import { CreativeControls } from "./CreativeControls";
 import { WRITING_TOOLS, TRANSFORM_STRENGTHS, transformInstruction, writingToolPreset, type TransformStrength, type WritingToolId } from "./writing-tools";
+import { AiToolPicker } from "./AiToolPicker";
 
 const REWRITE_PRESETS = ["polish", "shorten", "dialogue", "connection"] as const;
 const PRESET_LABELS = Object.freeze({
@@ -77,6 +78,9 @@ export type EditPopoverHandle = Readonly<{
 
 type EditPopoverProps = Readonly<{
   writingTool: Exclude<WritingToolId, "dictionary">;
+  /** Tools that fit the session target. Fewer than two hides the picker. */
+  tools?: readonly (typeof WRITING_TOOLS)[number][];
+  onToolChange?: (tool: WritingToolId) => void;
   canSubmit: boolean;
   consent: AiConsent | null;
   modelPreference: AiModelPreference;
@@ -90,7 +94,7 @@ type EditPopoverProps = Readonly<{
   onInputChange: (input: AiEditCommandInput) => void;
   onSelectCandidate: (candidateId: string) => void;
   onSubmit: () => void;
-  position: Readonly<{ left: number; top: number; maxHeight?: number; maxWidth?: number }>;
+  position: Readonly<{ left: number; top: number; maxHeight?: number; maxWidth?: number; width?: number; dock?: string }>;
   runtime: PublicAiRuntime;
   state: AiEditActiveState;
 }>;
@@ -155,6 +159,8 @@ export const EditPopover = forwardRef<
     position,
     runtime,
     state,
+    tools = [],
+    onToolChange,
     writingTool,
   },
   forwardedRef,
@@ -166,6 +172,9 @@ export const EditPopover = forwardRef<
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // New candidates start at the top, where the tabs and the diff are.
+  useLayoutEffect(() => { if (state.kind === "preview" && bodyRef.current) bodyRef.current.scrollTop = 0; }, [state.kind]);
   const instructionLength = codePointLength(state.input.instruction);
   const inserting = state.snapshot.operation === "insert";
   const completing = isCompletionOperation(state.snapshot.operation);
@@ -181,7 +190,7 @@ export const EditPopover = forwardRef<
     state.kind === "error" ||
     state.kind === "stale";
   const positionStyle: CSSProperties = {
-    maxHeight: position.maxHeight, maxWidth: position.maxWidth,
+    maxHeight: position.maxHeight, maxWidth: position.maxWidth, width: position.width,
     left: `${position.left}px`,
     top: `${position.top}px`,
   };
@@ -267,13 +276,12 @@ export const EditPopover = forwardRef<
       onCompositionEndCapture={() => { compositionRef.current = false; }}
       ref={containerRef}
       role="dialog"
+      data-dock={position.dock ?? "floating"}
+      data-state={state.kind}
       style={positionStyle}
     >
       <div className={styles.headingRow}>
-        <div>
-          <p className={styles.eyebrow}>{inserting ? "プロンプトから文章を作成" : `${tool.label} / ${tool.english}`}</p>
-          <h2 id="ai-command-title">{title}</h2>
-        </div>
+        <h2 id="ai-command-title">{title}</h2>
         <div className={styles.headingActions}>
         {onReturnToEditor ? <button type="button" className={styles.returnToEditor} onClick={() => {
           if (!compositionRef.current) onReturnToEditor();
@@ -294,8 +302,8 @@ export const EditPopover = forwardRef<
         </div>
       </div>
 
-      <div className={styles.popoverBody} role="region" aria-label="AI編集の内容" tabIndex={0}>
-      {!inserting && !completing ? <section className={styles.originalSelection} aria-label="推敲する原文">
+      <div className={styles.popoverBody} role="region" aria-label="AI編集の内容" tabIndex={0} ref={bodyRef}>
+      {!inserting && !completing && state.kind !== "preview" ? <section className={styles.originalSelection} aria-label="推敲する原文">
         <div><strong>選択した原文</strong><span>{codePointLength(state.snapshot.originalText).toLocaleString("ja-JP")}文字</span></div>
         <p>{state.snapshot.originalText}</p>
       </section> : null}
@@ -341,7 +349,8 @@ export const EditPopover = forwardRef<
 
       {state.kind === "preview" ? <button className={styles.editSettingsButton} type="button" aria-expanded={editSettings} onClick={() => setEditSettings(!editSettings)}>指示・送信設定を変更</button> : null}
       <div className={styles.commandSettings} hidden={state.kind === "preview" && !editSettings}>
-      {!inserting ? <p>{tool.description}</p> : null}
+      {onToolChange ? <AiToolPicker tools={tools} value={inserting ? "prompt-insert" : writingTool} disabled={state.kind !== "command" && state.kind !== "preview"} onChange={onToolChange} /> : null}
+      <p id="ai-tool-description" className={styles.toolDescription}>{inserting ? "入力した指示だけから文章を作ります。本文・前後の文脈は送りません。" : tool.description}</p>
       {!inserting && writingTool === "transform" ? <fieldset className={styles.controlGroup} disabled={controlsReadOnly}>
         <legend>文体変換の条件</legend>
         <label className={styles.field}><span>雰囲気・概念</span>
@@ -532,8 +541,12 @@ export const EditPopover = forwardRef<
         <button onClick={onCancel} type="button">
           キャンセル
         </button>
+        {state.kind === "command" && !canSubmit && state.input.instruction.trim() === "" ? (
+          <p className={styles.submitHint} id="ai-submit-hint">{!inserting && writingTool === "rewrite" ? "指示を入力するか、プリセットを選ぶと生成できます。" : "指示を入力すると生成できます。"}</p>
+        ) : null}
         {state.kind === "command" ? (
-          <button className={styles.primaryButton} disabled={!canSubmit} onClick={onSubmit} type="button">
+          <button className={styles.primaryButton} disabled={!canSubmit} onClick={onSubmit} type="button"
+            aria-describedby={!canSubmit && state.input.instruction.trim() === "" ? "ai-submit-hint" : undefined}>
             {comparing ? `${state.input.compareProviderIds?.length ?? 0}個のAIへ同時送信` : "生成"}
           </button>
         ) : null}

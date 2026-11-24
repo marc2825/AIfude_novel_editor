@@ -275,7 +275,7 @@ Task 14.1では`workspace-files.test.ts`と`workspace-files.spec.ts`、既存の
 | domain / controller | 項目選択による未選択内容の除外・予算削減、メタデータ、旧候補破棄、ONで選択0件なら送信0回 |
 | ファイル reader | UTF-8とCRLF・空行・末尾改行・emoji、JSONのID再発行と本文・メモ保持、同意初期化、不正形式・過大入力拒否 |
 | repository | database 1→2の非破壊upgrade、2作品の原子的交換と個別バージョン維持、stale reference・不正target・バックアップ ID衝突拒否、削除後の別作品の再open |
-| component | 未保存の入力の変更・取消・保存失敗、beforeunload、Cmd/Ctrl + S、初回保存失敗の再保存と切替中止、取込取消、AI処理中の切替取消、切替前のflush失敗とactivate失敗、切替直後の入力、閉じたタブの再open、中止無視の古いAI応答 |
+| component | 未保存の入力の変更・取消・保存失敗、beforeunload、Cmd/Ctrl + S、初回保存失敗の再保存と切替中止、取込取消、AI処理中の切替取消、切替前のflush失敗とactivate失敗、切替直後の入力、切替メニューからの作品の再open、中止無視の古いAI応答 |
 | E2E | 実再読み込みのbeforeunload確認と取消、メモ警告によるバックアップ取消、複数作品の保存・切替・閉じる・再open・再読み込み、JSON download / 新規open、.txt open、項目別参照と予算、旧AI応答の隔離 |
 
 離脱確認はユーザー操作済みのChromiumで検証し、native IMEやすべてのブラウザーの保証と扱わない。通常CIは実AIへ接続しない。
@@ -322,8 +322,8 @@ Phase 0以降はtypecheck、lint、Vitest、buildを必須にする。E2E導入�
 - `writing-library.test.ts`：全作品・章・メモ・履歴書き出しと復元、コピーID対応、同意初期化、不正／将来／過大バックアップ、CAS、同期容量制限失敗の全体ロールバック、履歴50件と作品削除。
 - `editor-sessions.test.ts`：live Editor再利用とUndo / 選択範囲分離、リビジョン一致時のカーソル復元、localStorage破損・容量制限、Strict Mode disposal。
 - `workspace.test.tsx`：未保存アウトライン、章保存失敗、履歴取消／復元前保存記録、自動履歴opt-in／容量制限で本文保持、章を往復した同じPMへの中止無視の遅延AI応答拒否。
-- `writing-tools.spec.ts`：章管理と進捗保存、作品／章Undoとカーソル、閉じたタブの再読み込み、検索置換の確認／stale／Undo、メモを含む履歴プレビューと復元、一括バックアップ／コピー復元の取消と再読み込み。
-- `saved-works-and-pixiv.spec.ts`：保存済みの作品を確認後にごみ箱へ移し、開いている作品とタブを保つ。pixiv向けのルビ出力を確認画面で示し、本文を変えない。
+- `writing-tools.spec.ts`：章管理と進捗保存、作品／章Undoとカーソル、再読み込み後の保存済み作品一覧とカーソル、検索置換の確認／stale／Undo、メモを含む履歴プレビューと復元、一括バックアップ／コピー復元の取消と再読み込み。
+- `saved-works-and-pixiv.spec.ts`：保存済みの作品を確認後にごみ箱へ移し、開いている作品と切替メニューの一覧を保つ。pixiv向けのルビ出力を確認画面で示し、本文を変えない。
 - `secret-works.spec.ts`：シークレット作品の暗号化保存（IndexedDBに平文が残らない）、再読み込みでのロック、誤ったパスワードの拒否、解錠・手動ロック、10分間の無操作での自動ロック、解除後の平文保存。
 
 実LLMの認証／推論とOS日本語IMEは未実施。合成compositionとChromiumの自動操作を実機IMEの代替と報告しない。
@@ -346,7 +346,7 @@ Playwrightの全設定は専用の一時AI設定ファイルを使用し、実�
 
 ## 新ロードマップPhase 1：スマホ幅とタップ
 
-`playwright.mobile.config.ts` / `tests/mobile/mobile.spec.ts` はPixel 7のChromium phone emulationとループバック mockを使う。6幅、全ツール、本文への退避/再表示とdraft/候補保持、候補比較と同意、タップAccept/Undo/Redo/保存reload、章・未保存入力・回転、遅延応答のstaleを検証。`pnpm test:e2e`の最後に実行する。DOM Rangeでネイティブ選択の結果を再現するため、OSの選択ハンドル操作の証拠とはしない。
+`playwright.mobile.config.ts` / `tests/mobile/mobile.spec.ts` はPixel 7のChromium phone emulationとループバック mockを使う。6幅、下部の8つの入口（44px以上・省略なし・360px以上で画面内）、全ツール（AI画面の中で選択）、本文への退避/再表示とdraft/候補保持、候補比較と同意、タップAccept/Undo/Redo/保存reload、章・未保存入力・回転、遅延応答のstaleを検証。`pnpm test:e2e`の最後に実行する。DOM Rangeでネイティブ選択の結果を再現するため、OSの選択ハンドル操作の証拠とはしない。
 
 componentではタッチcontextmenuの非取消、composition中のpointer/Undo/Redo拒否、VisualViewport縮小/scroll時のsnapshot/draft不変、背景化保存の完了前表示と容量制限失敗→再試行を確認する。jsdomにはRange layoutがないため、履歴componentだけscroll処理をstubし、実際のscrollはE2Eで検証する。
 
@@ -370,3 +370,15 @@ iOS/Android実機、Windows/macOS IME、物理キーボード、スクリーン�
 各接続で、採用前の本文不変、採用範囲、Undo/Redo、保存・再読み込み、生成中の編集、古い結果の拒否を確認する。複数AI比較は同じ原稿を明示選択した接続先だけへ送ることを確認する。送信量・時間・形式の条件は [AI編集仕様](AI_EDITING.md) と照合する。
 
 終了後はサーバーを止め、テスト用キーを削除または更新する。日付・OS・接続先・モデル・結果・未確認事項を記録する。実AIの検証は未実施のままであり、この手順の追加は実施済みを意味しない。
+
+## 画面の一新（Task 24.1）
+
+- `tests/unit/writing-tools.test.ts`：選択の形（文章・空白・カーソル）によるツールの種類の決定、種類ごとの最後のツールの記憶、辞書を記憶しないこと、壊れた記憶からの復帰、「指示から書く」がプリセット・初期指示・本文の文脈を持たないこと。
+- `tests/integration/ai-target.test.ts`：対象の印がDecorationだけで、本文・PM selection・guardのrevision・Undo履歴を変えず、snapshotを期限切れにしないこと。カーソル位置の印、本文変更時に印を別の文字へ移さず消すこと、範囲外と破棄済みエディタの無視。
+- `command.test.tsx`：選択によるツールの決定とパネル内の切替の記憶、合わないツールの記憶時の「指示から書く」への切替、合わないツールを選んでもセッションと入力を保つこと、ツール切替で受信済み候補を捨てて後から採用しないこと、右クリックの辞書で生成中の通信を中止し遅延応答を捨てること、対象の印の表示と閉じる・期限切れでの削除。
+- `workspace.test.tsx`：作品の切替メニューでの新規・切替・`aria-current`、保存失敗時に一覧を増やさないこと。
+- `workspace-design.spec.ts`：左の列の8つの入口（44px以上、14px以上の文字、アイコンの非読み上げ）、待機中にツールを並べないこと、選択とカーソルで出すツール、矢印キーでのツール選択、余白欄のAI画面が本文に重ならないこと、対象の印、ツール選択だけでは送信も本文の変更もしないこと。
+- `keyboard-boundary.spec.ts`：空白だけの選択は編集コマンドではなく中間補完で開くこと。
+- `ai-edit-helpers.ts`：`chooseAiTool`・`tryAiTool`・`openAiTool`（AI画面の中でツールを選ぶ）、`openWorkMenu`・`workMenuButton`・`savedWorkButtons`（作品の切替メニュー。一覧は閉じたまま件数と題を確認できる）。
+
+幅1440・1024・390pxの明暗の画面は、確認用のスクリプトで撮影して目視した。実機の日本語IME、スクリーンリーダー、macOSのヒラギノでの表示は未確認。

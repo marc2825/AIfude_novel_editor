@@ -5,7 +5,7 @@ import { chromium, expect, test, type Page, type BrowserContext } from "@playwri
 import { syncStateSchema } from "../../src/domain/sync";
 import { parseWorkspaceSnapshot } from "../../src/domain/workspace";
 import { parseHistoryEntry } from "../../src/persistence/writing-history";
-import { manuscriptEditor } from "../e2e/ai-edit-helpers";
+import { manuscriptEditor, openWorkMenu } from "../e2e/ai-edit-helpers";
 const projectId = "10000000-0000-4000-8000-000000000001";
 const origin = "http://127.0.0.1:3108";
 const headers = { Origin: origin, "Content-Type": "application/json", "X-Novel-Sync": "1" };
@@ -70,7 +70,7 @@ test("C-01/03/04/05/08: two persistent profiles survive lost ack, offline restar
     expect((await records(pageA, "workspace-history")).map(parseHistoryEntry).some((entry) => entry.projectId === copy.project.id && entry.label === "端末移行前")).toBe(true);
     await expect(manuscriptEditor(pageA)).toHaveText("端末Aで書いた原稿。😀");
     await pageA.getByRole("button", { name: "サイドパネルを閉じる" }).click();
-    await pageA.getByRole("combobox", { name: "保存済み作品を開く" }).selectOption(copy.project.id);
+    await openWorkMenu(pageA); await pageA.locator(`[data-project-id="${copy.project.id}"]`).click();
     await expect(manuscriptEditor(pageA)).toHaveText("端末Bの送信待ち後に追加した原稿。😀");
     await a.close(); a = await chromium.launchPersistentContext(join(root, "a"));
     const reopened = a.pages()[0]!; await reopened.goto(origin); await expect(manuscriptEditor(reopened)).toHaveText("端末Bの送信待ち後に追加した原稿。😀");

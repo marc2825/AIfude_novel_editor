@@ -3,6 +3,7 @@ import type { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { useEffect, useRef, useState } from "react";
 import styles from "../workspace/Workspace.module.css";
+import { WorkspaceIcon } from "../workspace/WorkspaceIcon";
 import { applySearchReplacement, captureSearch, isSearchCurrent, type SearchSnapshot } from "./search-replace";
 
 export function SearchPanel({ editor, disabled }: Readonly<{ editor: Editor | null; disabled: boolean }>) {
@@ -50,12 +51,12 @@ export function SearchPanel({ editor, disabled }: Readonly<{ editor: Editor | nu
     } catch (error: unknown) { setMessage(error instanceof Error ? error.message : "置換できません。"); }
   }
   const valid = search !== null && search.matches.length > 0 && !stale;
-  return <section className={styles.writingTools} aria-label="本文の検索と置換">
-    <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>検索・置換</button>
-    {open ? <div>
+  return <section className={styles.searchTools} aria-label="本文の検索と置換">
+    <button type="button" aria-expanded={open} aria-label="検索・置換" title="検索・置換（Cmd/Ctrl + F）" onClick={() => setOpen(!open)}><WorkspaceIcon name="search" /></button>
+    {open ? <div className={styles.searchBox}>
       <p>現在の章を検索します。（Cmd/Ctrl + F または H）</p>
       <label>検索語<textarea rows={1} ref={inputRef} aria-label="検索語" value={query} onChange={(event) => { setQuery(event.target.value); setSearch(null); }} /></label>
-      <label><input type="checkbox" checked={caseSensitive} onChange={(event) => { setCaseSensitive(event.target.checked); setSearch(null); }} />大文字・小文字を区別</label>
+      <label className={styles.checkLabel}><input type="checkbox" checked={caseSensitive} onChange={(event) => { setCaseSensitive(event.target.checked); setSearch(null); }} />大文字・小文字を区別</label>
       <button type="button" disabled={!editor || !query} onClick={find}>検索</button>
       <button type="button" disabled={!valid} onClick={() => selectMatch((index + (search?.matches.length ?? 1) - 1) % (search?.matches.length ?? 1))}>前の一致</button>
       <button type="button" disabled={!valid} onClick={() => selectMatch((index + 1) % (search?.matches.length ?? 1))}>次の一致</button>

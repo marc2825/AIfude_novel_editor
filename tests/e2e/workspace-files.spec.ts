@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
-import { manuscriptEditor, openAiCommand, openWorkspacePanel } from "./ai-edit-helpers";
+import { manuscriptEditor, openAiCommand, openWorkspacePanel, savedWorkButtons, workMenuButton } from "./ai-edit-helpers";
 import { validateAiEditRequest, type AiEditRequest } from "../../src/domain/ai-edit";
 import { createWorkspaceFixture } from "../fixtures/workspace";
 import { createAiEditSuccessResponseFixture } from "../fixtures/candidates";
@@ -43,28 +43,29 @@ test("keeps notes and manuscript when backup replacement is cancelled at the mem
   await expect(field).toHaveValue("未保存の人物"); await expect(editor).toHaveText("現在の本文");
 });
 
-test("saves, switches, closes and reopens independent files and loads JSON or text into new tabs", async ({ page }) => {
+test("saves and switches independent works from the work menu and loads JSON or text as new works", async ({ page }) => {
   await page.goto("/"); const editor = manuscriptEditor(page); await editor.fill("第一作品🙂\n\n末尾"); await rename(page, "一作目");
   await page.getByRole("button", { name: "作品メモリ", exact: true }).click();
   await page.getByRole("textbox", { name: /^登場人物メモ/u }).fill("一作目の主人公");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("本文と作品メモリを保存しました。", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "新規作品", exact: true }).click(); await expect(editor).toHaveText("");
+  await (await workMenuButton(page, "新規作品")).click(); await expect(editor).toHaveText("");
   await editor.fill("第二作品"); await rename(page, "二作目");
-  await page.getByRole("tab", { name: "一作目", exact: true }).click(); await expect(editor).toHaveText("第一作品🙂末尾");
+  await (await workMenuButton(page, "一作目")).click(); await expect(editor).toHaveText("第一作品🙂末尾");
   await page.getByRole("button", { name: "作品メモリ", exact: true }).click();
   await expect(page.getByRole("textbox", { name: /^登場人物メモ/u })).toHaveValue("一作目の主人公");
-  await page.getByRole("button", { name: "二作目のタブを閉じる", exact: true }).click(); await expect(page.getByRole("tab", { name: "二作目", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "一作目", exact: true })).toBeFocused();
-  await page.getByRole("combobox", { name: "保存済み作品を開く", exact: true }).selectOption({ label: "二作目" }); await expect(editor).toHaveText("第二作品");
-  await page.reload(); await expect(editor).toHaveText("第二作品"); await expect(page.getByRole("tab", { name: "一作目", exact: true })).toBeVisible();
-  const pendingDownload = page.waitForEvent("download"); await page.getByRole("button", { name: "JSONで保存", exact: true }).click();
+  await (await workMenuButton(page, "二作目")).click(); await expect(editor).toHaveText("第二作品");
+  // The open work is listed first, so the order follows the switch; compare the set of titles.
+  await page.reload(); await expect(editor).toHaveText("第二作品"); await expect(savedWorkButtons(page)).toHaveCount(2);
+  expect((await savedWorkButtons(page).allTextContents()).toSorted()).toEqual(["一作目", "二作目"].toSorted());
+  await expect(savedWorkButtons(page).filter({ hasText: "二作目" })).toHaveAttribute("aria-current", "true");
+  const pendingDownload = page.waitForEvent("download"); await (await workMenuButton(page, "JSONで書き出す")).click();
   const download = await pendingDownload; const path = await download.path(); if (!path) throw new Error("Missing download");
   await page.getByLabel("作品ファイルを開く", { exact: true }).setInputFiles({ name: download.suggestedFilename(), mimeType: "application/json", buffer: await readFile(path) });
-  await expect(page.getByRole("tablist", { name: "開いている作品" }).getByRole("tab")).toHaveCount(3);
+  await expect(savedWorkButtons(page)).toHaveCount(3);
   await expect(editor).toHaveText("第二作品");
   await page.getByLabel("作品ファイルを開く", { exact: true }).setInputFiles({ name: "読み込み.txt", mimeType: "text/plain", buffer: Buffer.from("先頭😀\r\n\r\n末尾\r\n") });
-  await expect(page.getByRole("tab", { name: "読み込み", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(await workMenuButton(page, "読み込み")).toHaveAttribute("aria-current", "true");
   await expect(editor).toHaveText("先頭😀末尾");
   expect(await editor.locator("p").allTextContents()).toEqual(["先頭😀", "", "末尾", ""]);
 });
@@ -100,7 +101,7 @@ test("never applies a delayed AI result to a newly opened work", async ({ page }
   });
   await page.goto("/"); const editor = manuscriptEditor(page); await editor.fill("前対象後");
   const dialog = await openAiCommand(page, "対象"); await dialog.getByRole("button", { name: "生成", exact: true }).click(); await started.promise;
-  await page.getByRole("button", { name: "新規作品", exact: true }).click(); await expect(editor).toHaveText(""); release.resolve();
+  await (await workMenuButton(page, "新規作品")).click(); await expect(editor).toHaveText(""); release.resolve();
   await expect(page.getByRole("button", { name: "採用", exact: true })).toHaveCount(0);
   await editor.fill("新しい作品の本文"); await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("本文と作品メモリを保存しました。", { exact: true })).toBeVisible(); await page.reload(); await expect(editor).toHaveText("新しい作品の本文");

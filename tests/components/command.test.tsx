@@ -45,7 +45,7 @@ import {
 } from "../fixtures/ai-runtime";
 import { createDeferred } from "../helpers/deferred";
 import { FakeDiffWorker } from "../helpers/diff-worker";
-import type { WritingToolId } from "../../src/features/ai-edit/writing-tools";
+import { DEFAULT_WRITING_TOOL_MEMORY, type WritingToolId, type WritingToolMemory } from "../../src/features/ai-edit/writing-tools";
 import { dictionaryGenerationRequest, dictionaryRequestSchema } from "../../src/domain/dictionary";
 
 const captureObservation = vi.hoisted(() => ({ spy: vi.fn() }));
@@ -95,6 +95,8 @@ const rejectConsentChange = async (): Promise<AiConsentChangeResult> => ({
 
 type HarnessProps = Readonly<{
   writingTool?: WritingToolId;
+  toolMemory?: WritingToolMemory;
+  onToolMemoryChange?: (memory: WritingToolMemory) => void;
   consent?: AiConsent | null;
   context?: SelectionCaptureContext;
   editorKey?: string;
@@ -111,6 +113,8 @@ type HarnessProps = Readonly<{
 
 function CommandHarness({
   writingTool = "rewrite",
+  toolMemory,
+  onToolMemoryChange,
   consent = null,
   context = BASE_CONTEXT,
   editorKey = "editor-a",
@@ -127,6 +131,9 @@ function CommandHarness({
 
   const handleCommand = useCallback((editor: Editor) => {
     return boundaryRef.current?.invoke(editor) ?? false;
+  }, []);
+  const handleDictionary = useCallback((editor: Editor) => {
+    return boundaryRef.current?.invoke(editor, undefined, "dictionary") ?? false;
   }, []);
   const handleReady = useCallback(
     (editor: Editor) => {
@@ -155,11 +162,11 @@ function CommandHarness({
   return (
     <>
       <NovelEditor
-        completionMode={writingTool === "infill" || writingTool === "continue" || writingTool === "context-insert" ? writingTool : undefined}
         editable={context.editable}
         initialText={initialText}
         key={editorKey}
         onAiCommand={handleCommand}
+        onDictionaryCommand={handleDictionary}
         onDocumentChange={onDocumentChange}
         onEditorDestroy={handleDestroy}
         onEditorReady={handleReady}
@@ -167,6 +174,8 @@ function CommandHarness({
       />
       <AiEditBoundary
         writingTool={writingTool}
+        toolMemory={toolMemory}
+        onToolMemoryChange={onToolMemoryChange}
         captureContext={context}
         consent={consent}
         modelPreference={modelPreference}
@@ -538,7 +547,7 @@ describe("AI edit command UI", () => {
     selectAndFocus(editor, 1, 5);
     const original = editor.state.doc;
     openWithShortcut(harness.editorElement);
-    await screen.findByText("膨らませる / Expand");
+    await screen.findByRole("radio", { name: "膨らませる", checked: true });
     fireEvent.click(screen.getByRole("button", { name: "生成" }));
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce());
     harness.rerender({ writingTool: "custom" });
@@ -547,7 +556,7 @@ describe("AI edit command UI", () => {
     expect(editor.state.doc).toBe(original);
     selectAndFocus(editor, 1, 5);
     openWithShortcut(harness.editorElement);
-    await screen.findByText("自由指示 / Custom");
+    await screen.findByRole("radio", { name: "自由指示", checked: true });
     await act(async () => {
       if (!request) throw new Error("Missing test request");
       pending.resolve(Response.json(createAiEditSuccessResponseFixture(request)));
@@ -558,13 +567,143 @@ describe("AI edit command UI", () => {
     expect(editor.state.doc).toBe(original);
   });
 
+  it("lets the selection decide the tool, and remembers the tool chosen inside the panel", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const onToolMemoryChange = vi.fn();
+    const harness = await renderHarness({ toolMemory: DEFAULT_WRITING_TOOL_MEMORY, onToolMemoryChange, initialText: "前。対象の文。" });
+    const editor = harness.editor(); const original = editor.state.doc;
+    selectAndFocus(editor, 3, 8); openWithShortcut(harness.editorElement);
+    await screen.findByRole("dialog", { name: "AI編集コマンド" });
+    expect(screen.getByRole("radio", { name: "書き直し" })).toBeChecked();
+    // Revising tools and the dictionary fit selected text; writing tools need a caret.
+    expect(screen.getAllByRole("radio").filter((radio) => radio.getAttribute("name") === "ai-tool").map((radio) => radio.getAttribute("value")))
+      .toEqual(["rewrite", "transform", "expand", "condense", "custom", "dictionary"]);
+    fireEvent.click(screen.getByRole("radio", { name: "短くする" }));
+    expect(screen.getByRole("radio", { name: "短くする" })).toBeChecked();
+    expect(screen.getByRole("textbox", { name: "編集の指示" })).not.toHaveValue("");
+    expect(onToolMemoryChange).toHaveBeenLastCalledWith({ revise: "condense", write: "prompt-insert" });
+    harness.rerender({ toolMemory: { revise: "condense", write: "prompt-insert" }, onToolMemoryChange, initialText: "前。対象の文。" });
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    selectAndFocus(editor, 2, 2); openWithShortcut(harness.editorElement);
+    await screen.findByRole("dialog", { name: "AI文章挿入" });
+    expect(screen.getByRole("radio", { name: "指示から書く" })).toBeChecked();
+    expect(screen.queryByRole("radio", { name: "書き直し" })).toBeNull();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    selectAndFocus(editor, 3, 8); openWithShortcut(harness.editorElement);
+    expect(await screen.findByRole("radio", { name: "短くする" })).toBeChecked();
+    // Choosing tools never sends anything and never edits the manuscript.
+    expect(fetchSpy).not.toHaveBeenCalled(); expect(editor.state.doc).toBe(original); expect(undoDepth(editor.state)).toBe(0);
+  });
+
+  it("falls back to prompt-only writing when the remembered writing tool does not fit the caret", async () => {
+    const harness = await renderHarness({ toolMemory: { revise: "rewrite", write: "continue" }, initialText: "前。後。" });
+    selectAndFocus(harness.editor(), 3, 3); openWithShortcut(harness.editorElement);
+    await screen.findByRole("dialog", { name: "AI文章挿入" });
+    expect(screen.getByRole("radio", { name: "指示から書く" })).toBeChecked();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    selectAndFocus(harness.editor(), 5, 5); openWithShortcut(harness.editorElement);
+    await screen.findByRole("dialog", { name: "AIの続き執筆" });
+    expect(screen.getByRole("radio", { name: "続きを書く" })).toBeChecked();
+  });
+
+  it("keeps the open session and its input when the chosen tool does not fit the target", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const harness = await renderHarness({ toolMemory: DEFAULT_WRITING_TOOL_MEMORY, initialText: "前。後。" });
+    const editor = harness.editor(); const original = editor.state.doc;
+    selectAndFocus(editor, 3, 3); openWithShortcut(harness.editorElement);
+    const dialog = await screen.findByRole("dialog", { name: "AI文章挿入" });
+    fireEvent.change(screen.getByRole("textbox", { name: "文章のプロンプト" }), { target: { value: "雨の描写" } });
+    fireEvent.click(screen.getByRole("radio", { name: "続きを書く" }));
+    expect(await screen.findByText("続けたい章の本文末尾に、範囲選択せずカーソルを置いてください。")).toBeInTheDocument();
+    expect(dialog).toBeInTheDocument(); expect(screen.getByRole("radio", { name: "指示から書く" })).toBeChecked();
+    expect(screen.getByRole("textbox", { name: "文章のプロンプト" })).toHaveValue("雨の描写");
+    expect(fetchSpy).not.toHaveBeenCalled(); expect(editor.state.doc).toBe(original);
+  });
+
+  it("discards received candidates when the tool changes, and never applies them afterwards", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const parsed = validateAiEditRequest(typeof init?.body === "string" ? JSON.parse(init.body) : null);
+      if (!parsed.success) throw new Error("Invalid test request");
+      return Response.json(createAiEditSuccessResponseFixture(parsed.data));
+    });
+    const harness = await renderHarness({ toolMemory: DEFAULT_WRITING_TOOL_MEMORY });
+    const editor = harness.editor(); const original = editor.state.doc;
+    selectAndFocus(editor, 1, 5); openWithShortcut(harness.editorElement);
+    await screen.findByRole("dialog", { name: "AI編集コマンド" });
+    fireEvent.click(screen.getByRole("button", { name: "自然に" })); fireEvent.click(screen.getByRole("button", { name: "生成" }));
+    await screen.findByRole("button", { name: "採用" });
+    fireEvent.click(screen.getByRole("button", { name: "指示・送信設定を変更" }));
+    fireEvent.click(screen.getByRole("radio", { name: "膨らませる" }));
+    expect(screen.queryByRole("button", { name: "採用" })).toBeNull();
+    expect(screen.getByRole("radio", { name: "膨らませる" })).toBeChecked();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter", ctrlKey: true });
+    expect(editor.state.doc).toBe(original); expect(undoDepth(editor.state)).toBe(0);
+  });
+
+  it("aborts a running request when the dictionary is opened from the context menu, and ignores its late reply", async () => {
+    const pending = createDeferred<Response>();
+    let request: AiEditRequest | null = null;
+    const observed: { signal: AbortSignal | null } = { signal: null };
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) => {
+      const parsed = validateAiEditRequest(typeof init?.body === "string" ? JSON.parse(init.body) : null);
+      if (!parsed.success) throw new Error("Invalid test request");
+      request = parsed.data;
+      observed.signal = init?.signal instanceof AbortSignal ? init.signal : null;
+      // This mock ignores abort and answers later.
+      return pending.promise;
+    });
+    const harness = await renderHarness({ toolMemory: DEFAULT_WRITING_TOOL_MEMORY });
+    const editor = harness.editor(); const original = editor.state.doc;
+    selectAndFocus(editor, 1, 5); openWithShortcut(harness.editorElement);
+    await screen.findByRole("dialog", { name: "AI編集コマンド" });
+    fireEvent.click(screen.getByRole("button", { name: "自然に" })); fireEvent.click(screen.getByRole("button", { name: "生成" }));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce());
+    // While generating, the picker is read-only like the other inputs.
+    expect(screen.getByRole("radio", { name: "短くする" })).toBeDisabled();
+    fireEvent(harness.editorElement, new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "辞書で調べる" }));
+    await screen.findByRole("dialog", { name: "語句を調べる" });
+    expect(observed.signal?.aborted).toBe(true);
+    expect(screen.getByRole("radio", { name: "辞書" })).toBeChecked();
+    await act(async () => {
+      if (!request) throw new Error("Missing test request");
+      pending.resolve(Response.json(createAiEditSuccessResponseFixture(request)));
+      await pending.promise;
+    });
+    expect(screen.queryByRole("button", { name: "採用" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "語句を調べる" })).toBeInTheDocument();
+    expect(fetchSpy).toHaveBeenCalledOnce(); expect(editor.state.doc).toBe(original);
+  });
+
+  it("marks the target in the manuscript while the panel is open and removes it on close and on a stale session", async () => {
+    const harness = await renderHarness({ toolMemory: DEFAULT_WRITING_TOOL_MEMORY, initialText: "前対象後" });
+    const editor = harness.editor(); const original = editor.state.doc;
+    selectAndFocus(editor, 2, 4);
+    const guard = getEditGuardState(editor.state);
+    openWithShortcut(harness.editorElement);
+    await screen.findByRole("dialog", { name: "AI編集コマンド" });
+    await waitFor(() => expect(harness.editorElement.querySelector(".ai-target")?.textContent).toBe("対象"));
+    // The marker is a decoration: the same document, selection revision and history.
+    expect(editor.state.doc).toBe(original); expect(getEditGuardState(editor.state)).toBe(guard); expect(undoDepth(editor.state)).toBe(0);
+    expect(screen.queryByText(/期限切れ/u)).toBeNull();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    await waitFor(() => expect(harness.editorElement.querySelector(".ai-target")).toBeNull());
+    selectAndFocus(editor, 2, 4); openWithShortcut(harness.editorElement);
+    await waitFor(() => expect(harness.editorElement.querySelector(".ai-target")).not.toBeNull());
+    act(() => { setTextSelection(editor, 1, 2); });
+    expect(await screen.findByText(/選択範囲が変更されたため/u)).toBeInTheDocument();
+    await waitFor(() => expect(harness.editorElement.querySelector(".ai-target")).toBeNull());
+    expect(editor.state.doc).toBe(original);
+  });
+
   it("keeps prompt insertion independent of the chosen selection tool", async () => {
     const harness = await renderHarness({ writingTool: "expand" });
     selectAndFocus(harness.editor(), 2, 2);
     openWithShortcut(harness.editorElement);
     await screen.findByRole("dialog", { name: "AI文章挿入" });
     expect(screen.getByRole("textbox", { name: "文章のプロンプト" })).toHaveValue("");
-    expect(screen.queryByText("膨らませる / Expand")).toBeNull();
+    expect(screen.queryByRole("radio", { name: "膨らませる" })).toBeNull();
     expect(screen.getByRole("button", { name: "生成" })).toBeDisabled();
     fireEvent.change(screen.getByRole("textbox", { name: "文章のプロンプト" }), { target: { value: "雨の描写を書いて" } });
     harness.rerender({ writingTool: "custom" });

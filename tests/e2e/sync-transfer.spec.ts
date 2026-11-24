@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import { parseSyncPayload } from "../../src/domain/sync";
-import { manuscriptEditor } from "./ai-edit-helpers";
+import { manuscriptEditor, openWorkMenu, savedWorkButtons } from "./ai-edit-helpers";
 
 test("C-01/06/07: unconfigured sync exports a secret-free transfer and imports only an explicit copy", async ({ page }) => {
   const sent: string[] = []; page.on("request", (request) => { if (request.url().includes("/api/sync")) sent.push(request.method()); });
@@ -26,8 +26,7 @@ test("C-01/06/07: unconfigured sync exports a secret-free transfer and imports o
   await panel.getByRole("button", { name: "この原稿と履歴をコピーとして復元" }).click();
   await expect(panel.getByText(/1作品をコピーとして復元/u)).toBeVisible(); await expect(editor).toHaveText("現在の原稿は書き続けています。");
   await page.getByRole("button", { name: "サイドパネルを閉じる" }).click();
-  const files = page.getByRole("combobox", { name: "保存済み作品を開く" });
-  const copy = await files.locator("option").evaluateAll((options, originalId) => options.map((option) => option.getAttribute("value")).find((id) => id && id !== originalId), payload.workspace.project.id);
-  if (!copy) throw new Error("Missing restored copy"); await files.selectOption(copy);
+  const copy = await savedWorkButtons(page).evaluateAll((buttons, originalId) => buttons.map((button) => button.getAttribute("data-project-id")).find((id) => id && id !== originalId), payload.workspace.project.id);
+  if (!copy) throw new Error("Missing restored copy"); await openWorkMenu(page); await page.locator(`[data-project-id="${copy}"]`).click();
   await expect(editor).toHaveText("端末移行前の原稿。😀"); expect(sent).toEqual([]);
 });

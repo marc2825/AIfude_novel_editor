@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { manuscriptEditor } from "./ai-edit-helpers";
+import { manuscriptEditor, savedWorkButtons } from "./ai-edit-helpers";
 
 const SECRET = "誰にも見せない秘密の本文";
 const PASSWORD = "secret password 1";
@@ -46,7 +46,7 @@ test("encrypts a secret work at rest, locks on reload and opens only with the pa
   await page.reload();
   const lock = page.getByRole("region", { name: "シークレット作品はロックされています" });
   await expect(lock).toBeVisible(); await expect(page.getByText(SECRET)).toHaveCount(0);
-  await expect(page.getByRole("tablist", { name: "開いている作品" }).getByRole("tab")).toHaveText("シークレット作品");
+  await expect(savedWorkButtons(page)).toHaveText("シークレット作品");
   await lock.getByLabel("パスワード").fill("wrong password");
   await lock.getByRole("button", { name: "解錠", exact: true }).click();
   await expect(lock.getByRole("alert")).toHaveText("パスワードが違います。");

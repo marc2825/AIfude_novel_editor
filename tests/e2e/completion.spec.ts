@@ -1,12 +1,11 @@
 import type { Editor } from "@tiptap/core";
 import { expect, test } from "@playwright/test";
 import { validateAiEditRequest, type AiEditRequest } from "../../src/domain/ai-edit";
-import { manuscriptEditor, placeCaret, selectParagraphText } from "./ai-edit-helpers";
+import { chooseAiTool, manuscriptEditor, placeCaret, selectParagraphText, tryAiTool } from "./ai-edit-helpers";
 
 for (const operation of ["infill", "continue"] as const) {
-  test(`${operation}: explicit mode, bounded context and length, Diff, Accept, Undo/Redo and reload`, async ({ page }) => {
+  test(`${operation}: tool chosen for the target, bounded context and length, Diff, Accept, Undo/Redo and reload`, async ({ page }) => {
     await page.goto("/"); const editor = manuscriptEditor(page); await expect(editor).toBeEditable();
-    await expect(page.getByRole("radio", { name: "書き直し（Rewrite）", exact: true })).toBeChecked();
     const before = "雨が止んだ。", gap = operation === "infill" ? "　　" : "", after = operation === "infill" ? "彼は外へ出た。" : "";
     const initial = before + gap + after; await editor.fill(initial);
     const requests: AiEditRequest[] = [];
@@ -15,11 +14,10 @@ for (const operation of ["infill", "continue"] as const) {
       const parsed = validateAiEditRequest(request.postDataJSON()); if (!parsed.success) throw new Error("Invalid request");
       requests.push(parsed.data);
     });
-    const label = operation === "infill" ? "中間補完（Infill）" : "続きを書く（Continue）";
-    await page.getByRole("radio", { name: label, exact: true }).check();
     if (operation === "infill") await selectParagraphText(page, gap); else await placeCaret(page, before.length);
-    await page.keyboard.press("Shift+F10");
-    await page.getByRole("menuitem", { name: operation === "infill" ? /中間補完/u : /続きを書く/u }).click();
+    await page.keyboard.press("Control+k");
+    // A blank gap can only be filled, so the panel opens with that tool; at a caret the tool is chosen in the panel.
+    if (operation === "continue") await chooseAiTool(page, "続きを書く");
     const dialog = page.getByRole("dialog", { name: operation === "infill" ? "AI中間補完" : "AIの続き執筆" });
     await expect(dialog).toBeVisible(); expect(requests).toHaveLength(0);
     const count = dialog.getByRole("spinbutton", { name: "目標文字数" });
@@ -42,14 +40,12 @@ for (const operation of ["infill", "continue"] as const) {
     await page.keyboard.press("Control+y"); await expect(editor).toHaveText(expected);
     await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
     await page.reload(); await expect(editor).toHaveText(expected);
-    await expect(page.getByRole("radio", { name: "書き直し（Rewrite）", exact: true })).toBeChecked();
   });
 }
 
 test("empty middle paragraph can be filled, and editing during generation invalidates the completion", async ({ page }) => {
   await page.goto("/"); const editor = manuscriptEditor(page); await expect(editor).toBeEditable();
   await editor.fill("前。\n\n後。");
-  await page.getByRole("radio", { name: "中間補完（Infill）", exact: true }).check();
   await editor.locator("p").nth(1).click();
   // Tiptap attaches its Editor to the editable DOM element. Wait for the native
   // selectionchange to reach PM; a click can resolve before that browser event.
@@ -57,7 +53,7 @@ test("empty middle paragraph can be filled, and editing during generation invali
     const tiptapElement = element as HTMLElement & { editor: Editor };
     return tiptapElement.editor.state.selection.from;
   })).toBe(5);
-  await page.keyboard.press("Control+k");
+  await page.keyboard.press("Control+k"); await chooseAiTool(page, "中間補完");
   const dialog = page.getByRole("dialog", { name: "AI中間補完" }); await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "生成", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "採用", exact: true })).toBeVisible();
@@ -80,15 +76,21 @@ test("empty middle paragraph can be filled, and editing during generation invali
   await expect(editor).toHaveText("手で続きを書いた。");
 });
 
-test("completion modes reject nonblank selection and mid-sentence caret without requests", async ({ page }) => {
+test("writing tools are not offered for selected text, and refuse a mid-sentence caret without requests", async ({ page }) => {
   await page.goto("/"); const editor = manuscriptEditor(page); await expect(editor).toBeEditable(); await editor.fill("前の文章。後の文章。");
   let count = 0; page.on("request", (request) => { if (request.url().endsWith("/api/ai/edits")) count += 1; });
-  await page.getByRole("radio", { name: "中間補完（Infill）", exact: true }).check();
   await selectParagraphText(page, "前の文章。"); await page.keyboard.press("Control+k");
-  await expect(page.getByText(/前後に本文がある空白だけを選択/u)).toBeVisible();
-  await placeCaret(page, 2); await page.keyboard.press("Control+k"); await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.getByRole("radio", { name: "続きを書く（Continue）", exact: true }).check();
+  const revise = page.getByRole("dialog", { name: "AI編集コマンド" }); await expect(revise).toBeVisible();
+  await expect(revise.getByRole("radio", { name: "中間補完", exact: true })).toHaveCount(0);
+  await expect(revise.getByRole("radio", { name: "続きを書く", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape"); await expect(page.getByRole("dialog")).toHaveCount(0);
   await placeCaret(page, 2); await page.keyboard.press("Control+k");
+  const insert = page.getByRole("dialog", { name: "AI文章挿入" }); await expect(insert).toBeVisible();
+  await tryAiTool(page, "中間補完");
+  await expect(page.getByText(/前後に本文がある空白だけを選択/u)).toBeVisible();
+  await tryAiTool(page, "続きを書く");
   await expect(page.getByText(/続けたい章の本文末尾/u)).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCount(0); expect(count).toBe(0);
+  // The open session and its tool stay as they were.
+  await expect(insert.getByRole("radio", { name: "指示から書く", exact: true })).toBeChecked();
+  expect(count).toBe(0); await expect(editor).toHaveText("前の文章。後の文章。");
 });
